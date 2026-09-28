@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+almacen_local/
+modelos_guardados/
+.streamlit/secrets.toml
+log.txt
