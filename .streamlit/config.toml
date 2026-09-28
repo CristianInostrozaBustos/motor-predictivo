@@ -1,0 +1,27 @@
+[theme]
+base = "light"
+primaryColor = "#1c5cab"
+backgroundColor = "#f7f7f5"
+secondaryBackgroundColor = "#eef0f3"
+textColor = "#0b0b0b"
+font = "Inter"
+headingFont = "Inter"
+baseRadius = "10px"
+borderColor = "#e3e2dc"
+showSidebarBorder = true
+
+[theme.sidebar]
+backgroundColor = "#ffffff"
+secondaryBackgroundColor = "#f1f3f6"
+
+[client]
+toolbarMode = "minimal"
+
+[[theme.fontFaces]]
+family = "Inter"
+url = "app/static/Inter.woff2"
+weight = "100 900"
+
+[server]
+enableStaticServing = true
+maxUploadSize = 50
