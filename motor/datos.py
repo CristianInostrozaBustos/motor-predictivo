@@ -49,6 +49,48 @@ def _normalizar(nombre: str) -> str:
     return s
 
 
+DERIVADAS_FECHA = {"ano", "anio", "year", "mes", "month", "dia", "day", "dia_semana", "weekday", "dayofweek",
+                   "day_of_week", "semana", "week", "trimestre", "quarter", "dia_mes", "dia_ano", "dia_anio",
+                   "semana_ano", "semana_anio", "numero_semana", "fin_de_semana", "weekend"}
+
+
+def es_derivada_de_fecha(nombre: str) -> bool:
+    """Columnas que solo repiten información de la fecha (año, mes, día de semana...).
+    El modelo ya usa el calendario, así que no aportan y confunden al usuario."""
+    return _normalizar(nombre) in DERIVADAS_FECHA
+
+
+_PALABRAS = {"dia": "día", "dias": "días", "indice": "índice", "promocion": "promoción", "estres": "estrés",
+             "critico": "crítico", "critica": "crítica", "ano": "año", "anio": "año", "categoria": "categoría",
+             "region": "región", "numero": "número", "cantidad": "cantidad", "periodo": "período",
+             "descripcion": "descripción", "codigo": "código", "ubicacion": "ubicación", "campana": "campaña",
+             "estacion": "estación", "reposicion": "reposición", "produccion": "producción",
+             "distribucion": "distribución", "transaccion": "transacción", "transacciones": "transacciones"}
+_SIGLAS = {"sku", "id", "clp", "usd", "eur", "kg", "ipc", "iva", "uf", "cd", "ss", "rop"}
+_UNIDADES = {"unidades": "unidades", "unid": "unidades", "u": "unidades", "dias": "días", "clp": "CLP",
+             "usd": "USD", "eur": "EUR", "kg": "kg", "pct": "%", "porcentaje": "%", "ton": "toneladas",
+             "litros": "litros", "lt": "litros", "horas": "horas", "semanas": "semanas", "meses": "meses", "uf": "UF"}
+
+
+def nombre_legible(columna: str) -> str:
+    """demanda_unidades -> Demanda (unidades); lead_time_dias -> Lead time (días); precio_clp -> Precio (CLP)."""
+    s = str(columna).strip()
+    if not re.fullmatch(r"[A-Za-z0-9_\-\s\.]+", s) or (" " in s and s[0].isupper()):
+        return s  # ya viene escrito para personas (con tildes, espacios y mayúsculas)
+    partes = [p for p in re.split(r"[_\-\s\.]+", re.sub(r"(?<=[a-z])(?=[A-Z])", "_", s)) if p]
+    if not partes:
+        return s
+    partes = [p.lower() for p in partes]
+    unidad = None
+    if len(partes) > 1 and partes[-1] in _UNIDADES:
+        unidad = _UNIDADES[partes.pop()]
+    palabras = [p.upper() if p in _SIGLAS else _PALABRAS.get(p, p) for p in partes]
+    if palabras[0] == palabras[0].lower():
+        palabras[0] = palabras[0][0].upper() + palabras[0][1:]
+    texto = " ".join(palabras)
+    return f"{texto} ({unidad})" if unidad else texto
+
+
 def _score_nombre(col: str, claves: list[str]) -> float:
     n = _normalizar(col)
     tokens = set(n.split("_"))
@@ -241,8 +283,7 @@ def detectar_roles(df: pd.DataFrame) -> Deteccion:
     # 5) exógenas extra: numéricas que no tomaron rol y que varían en el tiempo
     exogenas = [c for c in numericas if c not in usadas and df[c].nunique() > 1]
     # descartar columnas derivadas de la fecha (año, mes, día de semana)
-    derivadas = {"ano", "anio", "year", "mes", "month", "dia", "day", "dia_semana", "weekday", "dayofweek", "semana", "week"}
-    exogenas = [c for c in exogenas if _normalizar(c) not in derivadas]
+    exogenas = [c for c in exogenas if not es_derivada_de_fecha(c)]
     # descartar las que no cambian en el tiempo dentro de ninguna entidad (atributos fijos del producto)
     if roles.get("entidad"):
         exogenas = [c for c in exogenas if df.groupby(roles["entidad"])[c].nunique().max() > 1]
@@ -328,8 +369,8 @@ def preparar(df_original: pd.DataFrame, config: Configuracion) -> DatasetPrepara
     n0 = len(df_original)
     renombre = {orig: rol for rol, orig in roles.items() if orig}
     exog = [c for c in config.exogenas if c not in renombre]
-    etiquetas = {rol: orig for rol, orig in roles.items() if orig}
-    etiquetas.update({c: c for c in exog})
+    etiquetas = {rol: nombre_legible(orig) for rol, orig in roles.items() if orig}
+    etiquetas.update({c: nombre_legible(c) for c in exog})
 
     df = df_original[list(renombre) + exog].rename(columns=renombre).copy()
     if "entidad" not in df.columns:

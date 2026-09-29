@@ -15,7 +15,7 @@ if dp is None:
 
 fi = dp.freq_info
 obj = dp.etiquetas["objetivo"]
-nom = S.nombre_entidad(dp).capitalize()
+nom = S.mayus(S.nombre_entidad(dp))
 n_ent = dp.df["entidad"].nunique()
 df = dp.df
 
@@ -29,7 +29,7 @@ if dp.tiene("promocion"):
 if dp.tiene("quiebre") or dp.tiene("inventario"):
     disponibles.append("Quiebres de stock")
 if n_ent > 1:
-    disponibles.append("Variabilidad por " + nom.lower())
+    disponibles.append("Variabilidad por " + S.nombre_entidad(dp))
 
 elegidas = st.pills("Análisis", disponibles, selection_mode="multi", default=[disponibles[0]],
                     label_visibility="collapsed", key="pills_analisis")
@@ -108,7 +108,7 @@ if "Ranking ABC" in (elegidas or []):
                           yaxis_ticksuffix="%", height=360, showlegend=False, hovermode="closest")
         E.grafico(fig, key="fig_abc")
     c = abc["clase"].value_counts()
-    E.nota(f"Clase A: <b>{c.get('A', 0)}</b> {nom.lower()}(s) concentran el 80% de los {medida}. "
+    E.nota(f"Clase A: <b>{c.get('A', 0)}</b> {S.nombre_entidad(dp)}(s) concentran el 80% de los {medida}. "
            f"Clase B: {c.get('B', 0)} · Clase C: {c.get('C', 0)}.")
 
 # ---------------------------------------------------------------- promociones
@@ -125,7 +125,7 @@ if "Efecto de las promociones" in (elegidas or []):
         g = g.sort_values("efecto")
         fig = go.Figure(go.Bar(y=g.index.astype(str), x=g["efecto"], orientation="h",
                                marker=dict(color=E.AZUL, cornerradius=4), hovertemplate="%{x:+.1f}%<extra></extra>"))
-        fig.update_layout(title=f"Aumento de {obj} en promoción por {nom.lower()}", xaxis_ticksuffix="%",
+        fig.update_layout(title=f"Aumento de {obj} en promoción por {S.nombre_entidad(dp)}", xaxis_ticksuffix="%",
                           height=max(240, 34 * len(g) + 90), hovermode="closest")
         E.grafico(fig, key="fig_promo")
 
@@ -141,13 +141,13 @@ if "Quiebres de stock" in (elegidas or []):
         tasa = tasa.sort_values()
         fig = go.Figure(go.Bar(y=tasa.index.astype(str), x=tasa.values, orientation="h",
                                marker=dict(color=E.ROJO, cornerradius=4), hovertemplate="%{x:.1f}%<extra></extra>"))
-        fig.update_layout(title=f"Tasa de quiebre por {nom.lower()}", xaxis_ticksuffix="%",
+        fig.update_layout(title=f"Tasa de quiebre por {S.nombre_entidad(dp)}", xaxis_ticksuffix="%",
                           height=max(240, 34 * len(tasa) + 90), hovermode="closest")
         E.grafico(fig, key="fig_quiebre")
 
 # ---------------------------------------------------------------- variabilidad
-if "Variabilidad por " + nom.lower() in (elegidas or []):
-    st.markdown("## Variabilidad por " + nom.lower())
+if "Variabilidad por " + S.nombre_entidad(dp) in (elegidas or []):
+    st.markdown("## Variabilidad por " + S.nombre_entidad(dp))
     v = df.groupby("entidad")["objetivo"].agg(["mean", "std"])
     v["cv"] = v["std"] / v["mean"].replace(0, np.nan)
     with st.container(border=True):

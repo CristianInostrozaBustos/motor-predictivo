@@ -214,26 +214,103 @@ def nombre_entidad(dp, plural=False):
     et = dp.etiquetas.get("entidad", "")
     if et == "(una sola serie)" or not et:
         return "series" if plural else "serie"
-    et = et.strip().lower()
+    et = et.strip()
+    for sufijo in (" ID", " id", " código", " Código", " cod"):
+        if et.endswith(sufijo) and len(et) > len(sufijo):
+            et = et[: -len(sufijo)]
+    et = et if et.isupper() else et.lower()
     if plural:
+        if et.isupper():
+            return et + "s"
         return et if et.endswith("s") else et + ("es" if et[-1] in "rlnd" else "s")
     return et
 
 
-def _sync_ent():
-    st.session_state["entidad"] = st.session_state["_entidad_widget"]
+MAX_SERIES = 8
 
 
-def selector_entidad(entidades, dp):
+def mayus(texto):
+    texto = str(texto)
+    return texto[:1].upper() + texto[1:]
+
+
+def _por_volumen(dp, entidades):
+    vol = dp.df[dp.df["entidad"].isin(entidades)].groupby("entidad")["objetivo"].sum()
+    return [e for e in vol.sort_values(ascending=False).index if e in entidades]
+
+
+def _sync(clave_widget, clave_estado):
+    st.session_state[clave_estado] = st.session_state[clave_widget]
+
+
+def selector_vista(entidades, dp, key):
+    """Selector visible sobre el gráfico: total o uno/varios/todos los productos.
+    Devuelve None para la vista total o la lista de entidades elegidas. La elección se comparte entre páginas."""
+    entidades = list(entidades)
+    if len(entidades) <= 1:
+        return None
+    nom = nombre_entidad(dp)
+    modos = ["Total", f"Por {nom}"]
+    if st.session_state.get("vista_modo") not in ("Total", "Por"):
+        st.session_state["vista_modo"] = "Total"
+    previa = [e for e in st.session_state.get("vista_sel", []) if e in entidades]
+    if not previa:
+        previa = entidades if len(entidades) <= MAX_SERIES else _por_volumen(dp, entidades)[:5]
+    st.session_state["vista_sel"] = previa
+
+    kw_modo, kw_sel = f"_vm_{key}", f"_vs_{key}"
+    st.session_state[kw_modo] = modos[0] if st.session_state["vista_modo"] == "Total" else modos[1]
+    st.session_state[kw_sel] = previa
+
+    def _sync_modo():
+        v = st.session_state.get(kw_modo)
+        st.session_state["vista_modo"] = "Total" if v in (None, "Total") else "Por"
+
+    c1, c2 = st.columns([1, 3], vertical_alignment="bottom")
+    with c1:
+        st.segmented_control("Ver", modos, key=kw_modo, on_change=_sync_modo, width="stretch")
+    if st.session_state["vista_modo"] == "Total":
+        c2.caption(f"Suma de {'los' if not nom.endswith('a') else 'las'} {len(entidades)} {nombre_entidad(dp, True)}. "
+                   f"Elige «{modos[1]}» para verlos por separado o compararlos.")
+        return None
+    with c2:
+        etiqueta = f"{mayus(nombre_entidad(dp, True))} a mostrar"
+        if len(entidades) <= 12:
+            elegidas = st.pills(etiqueta, entidades, selection_mode="multi", key=kw_sel,
+                                on_change=_sync, args=(kw_sel, "vista_sel"))
+        else:
+            elegidas = st.multiselect(etiqueta, entidades, key=kw_sel, max_selections=MAX_SERIES,
+                                      on_change=_sync, args=(kw_sel, "vista_sel"),
+                                      placeholder=f"Elige hasta {MAX_SERIES}")
+    elegidas = [e for e in entidades if e in (elegidas or [])]
+    if not elegidas:
+        st.caption(f":material/info: Elige al menos un {nom}. Mientras tanto se muestra el total.")
+        return None
+    return elegidas
+
+
+def titulo_seleccion(sel, dp):
+    if len(sel) == 1:
+        return str(sel[0])
+    if len(sel) <= 3:
+        return ", ".join(map(str, sel[:-1])) + " y " + str(sel[-1])
+    return f"{len(sel)} {nombre_entidad(dp, True)}"
+
+
+def selector_entidad(entidades, dp, key="ent"):
+    """Selector de una sola entidad, visible en la página (no en la barra lateral)."""
+    entidades = list(entidades)
     if st.session_state.get("entidad") not in entidades:
         st.session_state["entidad"] = entidades[0]
-    st.session_state["_entidad_widget"] = st.session_state["entidad"]
     if len(entidades) == 1:
         return entidades[0]
-    with st.sidebar:
-        st.markdown(f"##### {nombre_entidad(dp).capitalize()}")
-        return st.selectbox(nombre_entidad(dp), entidades, key="_entidad_widget", on_change=_sync_ent,
-                            label_visibility="collapsed")
+    kw = f"_ent_{key}"
+    st.session_state[kw] = st.session_state["entidad"]
+    nom = nombre_entidad(dp)
+    c1, _ = st.columns([1, 2])
+    c1.selectbox(mayus(nom), entidades, key=kw,
+                 on_change=_sync, args=(kw, "entidad"))
+    return st.session_state[kw]
 
 
 def panel_dataset():
@@ -251,7 +328,7 @@ def panel_dataset():
             f"""<div style="display:flex;flex-direction:column;gap:10px">
               <div class="ficha"><span class="l">Archivo</span><span class="v" style="word-break:break-all">{nombre}</span></div>
               <div style="display:flex;gap:18px">
-                <div class="ficha"><span class="l">{nombre_entidad(dp, n != 1).capitalize()}</span><span class="v">{E.num(n)}</span></div>
+                <div class="ficha"><span class="l">{mayus(nombre_entidad(dp, n != 1))}</span><span class="v">{E.num(n)}</span></div>
                 <div class="ficha"><span class="l">Datos</span><span class="v">{dp.freq_info['nombre'].capitalize()}</span></div>
               </div>
               <div>{estado}</div>

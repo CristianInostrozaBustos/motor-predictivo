@@ -1,6 +1,7 @@
 """Identidad visual del sitio: colores, CSS, plantilla de gráficos y componentes."""
 
 import io
+import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import plotly.io as pio
@@ -214,9 +215,67 @@ def pie_pagina():
     )
 
 
+MESES_CORTOS = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"]
+
+
+def _fechas_en_x(fig):
+    """Mínimo y máximo de las fechas del eje x (None si el eje no es de fechas)."""
+    lo = hi = None
+    for tr in fig.data:
+        x = getattr(tr, "x", None)
+        if x is None or len(x) == 0:
+            continue
+        arr = np.asarray(x)
+        if not (np.issubdtype(arr.dtype, np.datetime64) or
+                (arr.dtype == object and isinstance(arr.flat[0], (pd.Timestamp, np.datetime64)))
+                or hasattr(arr.flat[0], "year")):
+            return None
+        s = pd.to_datetime(pd.Series(arr.ravel()), errors="coerce").dropna()
+        if s.empty:
+            return None
+        lo = s.min() if lo is None else min(lo, s.min())
+        hi = s.max() if hi is None else max(hi, s.max())
+    return (lo, hi) if lo is not None else None
+
+
+def ticks_fechas_es(lo, hi, max_ticks=8):
+    """Marcas del eje x con meses en español (Plotly solo los trae en inglés)."""
+    dias = (hi - lo).days
+    if dias > 75:
+        meses = (hi.year - lo.year) * 12 + hi.month - lo.month + 1
+        paso = next(p for p in (1, 2, 3, 4, 6, 12, 24, 36, 60) if meses / p <= max_ticks)
+        inicio = pd.Timestamp(lo.year, lo.month, 1)
+        if inicio < lo.normalize():
+            inicio += pd.DateOffset(months=1)
+        if paso >= 12:
+            inicio = pd.Timestamp(inicio.year + (inicio.month > 1), 1, 1)
+        elif paso > 1:
+            while (inicio.month - 1) % paso:
+                inicio += pd.DateOffset(months=1)
+        vals = list(pd.date_range(inicio, hi, freq=pd.DateOffset(months=paso)))
+        textos, anio_prev = [], None
+        for v in vals:
+            if paso >= 12:
+                textos.append(str(v.year))
+            elif v.year != anio_prev:
+                textos.append(f"{MESES_CORTOS[v.month - 1]}<br>{v.year}")
+            else:
+                textos.append(MESES_CORTOS[v.month - 1])
+            anio_prev = v.year
+        return vals, textos
+    paso = max(1, int(np.ceil(dias / max_ticks)))
+    paso = next((p for p in (1, 2, 3, 7, 14) if p >= paso), paso)
+    vals = list(pd.date_range(lo.normalize(), hi, freq=f"{paso}D"))
+    return vals, [f"{v.day} {MESES_CORTOS[v.month - 1]}" for v in vals]
+
+
 def grafico(fig, key=None, alto=None):
     if alto:
         fig.update_layout(height=alto)
+    rango = _fechas_en_x(fig)
+    if rango is not None and fig.layout.xaxis.tickvals is None:
+        vals, textos = ticks_fechas_es(*rango)
+        fig.update_xaxes(tickmode="array", tickvals=vals, ticktext=textos, hoverformat="%d/%m/%Y")
     st.plotly_chart(fig, width="stretch", key=key, config={"displaylogo": False, "locale": "es"})
 
 

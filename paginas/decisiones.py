@@ -13,7 +13,7 @@ fut = S.pronostico()
 entidades = list(fut)
 fi = dp.freq_info
 H = S.horizonte()
-nom = S.nombre_entidad(dp).capitalize()
+nom = S.mayus(S.nombre_entidad(dp))
 
 E.encabezado(
     "Paso 3",
@@ -59,7 +59,7 @@ with st.container(border=True):
     rev_def = {"D": 30, "W": 28, "M": 30, "Q": 91}[dp.config.frecuencia]
     revision = c2.number_input("Cada cuántos días revisas y pides", 1, 365, int((guardada or {}).get("revision", rev_def)),
                                help="Período de revisión (P) de la política.")
-    with st.expander("Lead time e inventario por " + nom.lower(), expanded=bool(falta), icon=":material/edit:"):
+    with st.expander("Lead time e inventario por " + S.nombre_entidad(dp), expanded=bool(falta), icon=":material/edit:"):
         if falta:
             st.caption(":material/info: Tu archivo no trae " + " ni ".join(falta) + ". Complétalos aquí para obtener las decisiones.")
         else:
@@ -130,8 +130,8 @@ st.dataframe(tabla, width="stretch", hide_index=True, column_config={
 
 # ---------------------------------------------------------------- detalle
 st.write("")
-st.markdown("## Detalle")
-ent = S.selector_entidad(entidades, dp) if len(entidades) > 1 else entidades[0]
+st.markdown(f"## Detalle por {S.nombre_entidad(dp)}")
+ent = S.selector_entidad(entidades, dp, key="dec")
 d = decs[ent]
 pr = fut[ent]
 u = fi["unidad"]

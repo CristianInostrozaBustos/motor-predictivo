@@ -14,7 +14,7 @@ S.panel_dataset()
 fi = dp.freq_info
 freq = dp.config.frecuencia
 H = S.horizonte()
-nom = S.nombre_entidad(dp).capitalize()
+nom = S.mayus(S.nombre_entidad(dp))
 entidades = list(res.series)
 u, u_pl = fi["unidad"], fi["unidad_pl"]
 
@@ -180,7 +180,7 @@ if len(afectadas) > 1:
     if hay_inv:
         afect = int((tabla[f"{u_pl.capitalize()} extra sin stock, sin ajustar"] > 0).sum())
         k2.metric("Con quiebre si no ajustas", f"{afect} de {len(afectadas)}",
-                  help=f"{S.nombre_entidad(dp, True).capitalize()} que se quedan sin stock en algún momento.")
+                  help=f"{S.mayus(S.nombre_entidad(dp, True))} que se quedan sin stock en algún momento.")
         k3.metric("Sin atender, sin ajustar", E.num(tabla["Unidades perdidas, sin ajustar"].sum()), help="Unidades de demanda perdidas.")
         k4.metric("Sin atender, ajustando", E.num(sum(c.resumen["perdida_extra_aj"] for c in comps.values())))
     st.dataframe(tabla.sort_values(f"{u_pl.capitalize()} extra sin stock, sin ajustar", ascending=False) if hay_inv else tabla,
@@ -189,8 +189,8 @@ if len(afectadas) > 1:
                      **{c: st.column_config.NumberColumn(format="%.0f") for c in tabla.columns[2:]},
                  })
     st.write("")
-    st.markdown("### Detalle")
-    ent = S.selector_entidad(afectadas, dp)
+    st.markdown(f"### Detalle por {S.nombre_entidad(dp)}")
+    ent = S.selector_entidad(afectadas, dp, key="esc")
 else:
     ent = afectadas[0]
 

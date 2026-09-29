@@ -68,9 +68,11 @@ with st.expander("Revisar columnas detectadas", icon=":material/view_column:", e
                                     key=f"rol_{rol}_{k}")
         roles[rol] = None if sel == NINGUNA else sel
     asignadas = {v for v in roles.values() if v}
-    candidatas = [c for c in columnas if c not in asignadas and pd.api.types.is_numeric_dtype(df[c])]
+    candidatas = [c for c in columnas if c not in asignadas and pd.api.types.is_numeric_dtype(df[c])
+                  and not D.es_derivada_de_fecha(c)]
     exogenas = st.multiselect("Otras variables que influyen en la demanda", candidatas,
                               default=[c for c in det.exogenas if c in candidatas], key=f"exog_{k}",
+                              format_func=D.nombre_legible,
                               placeholder="Ninguna",
                               help="Por ejemplo clima, tráfico o un índice de mercado.")
 
@@ -114,15 +116,28 @@ n_ent = dp.df["entidad"].nunique()
 # ---------------------------------------------------------------- resumen amable
 f0, f1 = dp.df["fecha"].min(), dp.df["fecha"].max()
 c1, c2, c3 = st.columns(3)
-c1.metric(S.nombre_entidad(dp, n_ent != 1).capitalize(), E.num(n_ent))
+c1.metric(S.mayus(S.nombre_entidad(dp, n_ent != 1)), E.num(n_ent))
 c2.metric("Historial", f"{f0:%m/%Y} – {f1:%m/%Y}")
 c3.metric(f"Total {dp.etiquetas['objetivo']}", E.num(dp.df["objetivo"].sum()))
 
 with st.container(border=True):
-    total = dp.df.groupby("fecha")["objetivo"].sum().reset_index()
-    fig = go.Figure(go.Scatter(x=total["fecha"], y=total["objetivo"], line=dict(color=E.AZUL, width=1.5),
-                               hovertemplate="%{y:,.0f}", name="Total"))
-    fig.update_layout(title=f"{dp.etiquetas['objetivo']} por {fi['unidad']}", height=280, showlegend=False)
+    todas = sorted(dp.df["entidad"].unique())
+    sel = S.selector_vista(todas, dp, key="datos")
+    if sel is None:
+        total = dp.df.groupby("fecha")["objetivo"].sum().reset_index()
+        fig = go.Figure(go.Scatter(x=total["fecha"], y=total["objetivo"], line=dict(color=E.AZUL, width=1.5),
+                                   hovertemplate="%{y:,.0f}", name="Total"))
+        titulo = f"{dp.etiquetas['objetivo']} por {fi['unidad']} · " + (
+            f"todos los {S.nombre_entidad(dp, True)} (total)" if len(todas) > 1 else str(todas[0]))
+        fig.update_layout(title=titulo, height=320, showlegend=False)
+    else:
+        fig = go.Figure()
+        for e in sel:
+            g = dp.df[dp.df["entidad"] == e]
+            fig.add_trace(go.Scatter(x=g["fecha"], y=g["objetivo"], name=str(e), mode="lines",
+                                     line=dict(color=E.color_sku(e, todas), width=1.4), hovertemplate="%{y:,.0f}"))
+        fig.update_layout(title=f"{dp.etiquetas['objetivo']} por {fi['unidad']} · {S.titulo_seleccion(sel, dp)}",
+                          height=380, showlegend=True)
     E.grafico(fig, key="fig_total")
 
 if not plan.viable:
