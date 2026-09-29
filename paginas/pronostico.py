@@ -133,20 +133,35 @@ if "Qué tan preciso es" in (vistas or []):
                   delta="mejor" if mejora > 0 else "peor", delta_color="normal" if mejora > 0 else "inverse")
 
 if "Prueba con datos pasados" in (vistas or []):
-    st.markdown(f"### Prueba con datos pasados · {nombre_vista}")
-    if len(ver) > 1:
-        bt = pd.concat([res.backtest[e] for e in ver if e in res.backtest]).groupby(
+    st.markdown("### Prueba con datos pasados")
+    con_bt = [e for e in ver if e in res.backtest]
+    SUMA = f"Suma de los {len(con_bt)} seleccionados" if sel is not None else f"Total de {S.nombre_entidad(dp, True)}"
+    if len(con_bt) > 1:
+        c_bt, _ = st.columns([1, 2])
+        prueba = c_bt.selectbox(f"Ver la prueba de", con_bt + [SUMA],
+                                index=0 if sel is not None else len(con_bt), key="bt_ent")
+    else:
+        prueba = con_bt[0]
+    if prueba == SUMA:
+        bt = pd.concat([res.backtest[e] for e in con_bt]).groupby(
             "fecha", as_index=False)[["real", "P10", "P50", "P90", "naive"]].sum()
     else:
-        bt = res.backtest[ver[0]]
+        bt = res.backtest[prueba]
+    temporada = {"D": "la última semana", "W": "el mismo período del año anterior",
+                 "M": "el mismo mes del año anterior", "Q": "el mismo trimestre del año anterior"}[dp.config.frecuencia]
     with st.container(border=True):
         fig = E.fig_banda(bt["fecha"], bt["P10"], bt["P50"], bt["P90"], nombre_p50="Lo que pronosticó")
         fig.add_trace(go.Scatter(x=bt["fecha"], y=bt["real"], name="Lo que pasó", line=dict(color=E.TINTA, width=1.8),
                                  hovertemplate="%{y:,.0f}"))
-        fig.add_trace(go.Scatter(x=bt["fecha"], y=bt["naive"], name="Sin modelo (temporada anterior)",
+        fig.add_trace(go.Scatter(x=bt["fecha"], y=bt["naive"], name="Sin modelo (repetir " + temporada + ")",
                                  line=dict(color=E.NARANJO, width=1.4, dash="dot"), hovertemplate="%{y:,.0f}"))
-        fig.update_layout(title=f"Pronóstico vs. realidad · {nombre_vista} · últimos {res.plan.validacion} {fi['unidad_pl']}", height=400)
+        fig.update_layout(title=f"Pronóstico vs. realidad · {prueba} · últimos {res.plan.validacion} {fi['unidad_pl']}",
+                          height=400)
         E.grafico(fig, key="fig_bt")
+        st.caption(f"Se escondieron los últimos {res.plan.validacion} {fi['unidad_pl']} del historial, el modelo los "
+                   "pronosticó sin verlos y aquí se compara con lo que realmente pasó. La línea punteada naranja es la "
+                   f"referencia sin modelo: repetir {temporada} conocida antes de la prueba. Si la línea azul queda "
+                   "más cerca de la negra que la naranja, el modelo aporta.")
 
 # ---------------------------------------------------------------- descarga
 todo = pd.concat([f.assign(entidad=e) for e, f in fut.items()])
