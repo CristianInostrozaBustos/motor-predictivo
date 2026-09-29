@@ -109,17 +109,23 @@ def lead_time_por_periodo(lt_dias: float, esc: Escenario, n: int, freq: str) -> 
 
 # ---------------------------------------------------------------- simulación
 
-def simular(fechas, demanda, inventario0, rop, meta, lt_periodos) -> pd.DataFrame:
+def simular(fechas, demanda, inventario0, rop, meta, lt_periodos, plan=None) -> pd.DataFrame:
     """Simulación período a período con venta perdida (el inventario no baja de cero).
 
     rop, meta y lt_periodos pueden ser escalares o arreglos por período. Cuando la posición
     de inventario (disponible + en tránsito) llega al ROP se pide hasta la meta; el pedido
     llega después del lead time vigente al momento de pedir.
+
+    `plan` es la demanda que el planificador espera (por defecto, la misma demanda). Se usa para mirar un
+    período adelante: si esperar hasta mañana deja la posición bajo el punto de reorden de mañana, se pide hoy.
+    Sin esto, con revisión diaria el pedido sale cuando la posición ya está hasta un día de demanda bajo el
+    punto de reorden, y si el stock de seguridad es menor que un día de demanda se produce un quiebre.
     """
     n = len(demanda)
     rop = np.broadcast_to(np.asarray(rop, float), (n,))
     meta = np.broadcast_to(np.asarray(meta, float), (n,))
     lt = np.broadcast_to(np.asarray(lt_periodos, float), (n,))
+    plan = np.asarray(demanda if plan is None else plan, float)
     I = float(inventario0)
     transito = []
     filas = []
@@ -133,7 +139,8 @@ def simular(fechas, demanda, inventario0, rop, meta, lt_periodos) -> pd.DataFram
         I -= atendida
         posicion = I + sum(q for _, q in transito)
         pedido = 0.0
-        if posicion <= rop[t]:
+        manana = t + 1 < n and posicion - plan[t + 1] < rop[t + 1]
+        if posicion <= rop[t] or manana:
             pedido = max(0.0, meta[t] - posicion)
             if pedido > 0:
                 transito.append((t + max(1, int(np.ceil(lt[t]))), pedido))
@@ -204,13 +211,13 @@ def comparar(entidad, pron_base, pron_esc_modelo, par: Parametros, esc: Escenari
         I0 = par.inventario_actual
         f = pron_base["fecha"].to_numpy()
         s_base = simular(f, pron_base["P50"].to_numpy(), I0, rop_b, meta_b, lt_base)
-        s_sin = simular(f, pron_esc["P50"].to_numpy(), I0, rop_b, meta_b, lt_esc)
+        s_sin = simular(f, pron_esc["P50"].to_numpy(), I0, rop_b, meta_b, lt_esc, plan=pron_base["P50"].to_numpy())
         s_aj = simular(f, pron_esc["P50"].to_numpy(), I0, rop_e, meta_e, lt_esc)
         sims = (s_base, s_sin, s_aj)
         mundos = [("base", s_base), ("sin_ajuste", s_sin), ("ajustada", s_aj)]
         if esc.retraso_dias() and esc.costo_alternativo():
             # los pedidos del evento se compran al proveedor alternativo, que llega en el lead time normal
-            s_alt = simular(f, pron_esc["P50"].to_numpy(), I0, rop_b, meta_b, lt_base)
+            s_alt = simular(f, pron_esc["P50"].to_numpy(), I0, rop_b, meta_b, lt_base, plan=pron_base["P50"].to_numpy())
             mundos.append(("alternativo", s_alt))
         for nombre, s in mundos:
             resumen[f"quiebre_{nombre}"] = int(s["quiebre"].sum())

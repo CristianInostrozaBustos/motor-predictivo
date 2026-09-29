@@ -83,7 +83,9 @@ S.actualizar_registro(politica=S.politica_a_json(st.session_state["politica"]["t
 # ---------------------------------------------------------------- decisiones
 # el pedido cubre lead time + revisión: si el horizonte elegido es más corto, se extiende internamente
 necesarios = int(np.ceil((editado["Lead time (días)"].max() + revision) / fi["dias"])) + 1
-H_dec = min(res.plan.horizonte_max, max(H, 2 * necesarios))
+# se usa el horizonte máximo para que la fecha del próximo pedido no dependa del largo elegido
+# (la política se recalcula con la demanda que viene, y cortar el pronóstico antes la distorsiona)
+H_dec = res.plan.horizonte_max
 if H_dec != H:
     fut = S.pronostico(H_dec)
 decs = {}
@@ -169,7 +171,14 @@ with col_m:
                    "del rango P10–P90. Si el inventario baja del punto de reorden, se pide lo necesario para llegar a T.")
 
 with col_t:
-    sim = P.simular(pr, d)
+    # la proyección se alarga hasta que llegue el próximo pedido (si no, se vería bajar sin reponerse nunca)
+    if d.periodos_hasta_pedido is not None:
+        H_sim = int(np.ceil(d.periodos_hasta_pedido + d.L + 0.5 * d.P)) + 3
+    else:
+        H_sim = res.plan.horizonte_max
+    H_sim = min(res.plan.horizonte_max, max(len(pr), H_sim))
+    pr_sim = S.pronostico(H_sim)[ent] if H_sim > len(pr) else pr
+    sim = P.simular(pr_sim, d)
     if not len(sim):
         E.nota("Ingresa el inventario actual en <b>Lead time e inventario</b> (arriba) para ver la proyección "
                "del inventario y la fecha del próximo pedido.")
@@ -183,13 +192,36 @@ with col_t:
                                      marker=dict(color=E.NARANJO, size=10, symbol="triangle-up",
                                                  line=dict(color="white", width=1.5)),
                                      customdata=ped["pedido"], hovertemplate="pedido de %{customdata:,.0f} u."))
+            lle = sim[sim["llegada"] > 0]
+            fig.add_trace(go.Scatter(x=lle["fecha"], y=lle["inventario"], mode="markers", name="Llega el pedido",
+                                     marker=dict(color=E.VERDE, size=10, symbol="diamond",
+                                                 line=dict(color="white", width=1.5)),
+                                     customdata=lle["llegada"], hovertemplate="llegan %{customdata:,.0f} u."))
+            # tramo en que el pedido va en camino (entrada de leyenda con un cuadrado del mismo color)
+            fig.add_trace(go.Scatter(x=[None], y=[None], mode="markers", name="Pedido en camino",
+                                     marker=dict(symbol="square", size=12, color=E.NARANJO, opacity=0.25)))
+            for _, fp in ped.iterrows():
+                llegadas = lle[lle["fecha"] > fp["fecha"]]
+                if len(llegadas):
+                    fig.add_vrect(x0=fp["fecha"], x1=llegadas["fecha"].iloc[0], fillcolor=E.NARANJO, opacity=0.07,
+                                  line_width=0)
             fig.add_trace(go.Scatter(x=sim["fecha"], y=sim["rop"], name="Punto de reorden", mode="lines",
                                      line=dict(color=E.NARANJO, dash="dash", width=1.5), hovertemplate="%{y:,.0f}"))
             fig.add_trace(go.Scatter(x=sim["fecha"], y=sim["ss"], name="Stock de seguridad", mode="lines",
                                      line=dict(color=E.ROJO, dash="dot", width=1.5), hovertemplate="%{y:,.0f}"))
-            fig.update_layout(title=f"Inventario proyectado · {ent}", yaxis_title="Unidades", height=400)
+            fig.update_layout(title=f"Inventario proyectado · {ent}", yaxis_title="Unidades", height=440,
+                              margin=dict(t=120))
             E.grafico(fig, key="fig_inv")
-            st.caption("Proyección aplicando la política sobre el pronóstico. El punto de reorden se recalcula cada período con la demanda que viene; cada pedido llega después del lead time.")
+            texto = ("Proyección aplicando la política sobre el pronóstico. El punto de reorden se recalcula cada período "
+                     "con la demanda que viene.")
+            if len(ped):
+                f_ped = ped["fecha"].iloc[0]
+                llegadas = lle[lle["fecha"] > f_ped]
+                if len(llegadas):
+                    texto += (f" El pedido del {f_ped:%d/%m/%Y} llega el {llegadas['fecha'].iloc[0]:%d/%m/%Y} "
+                              f"(lead time de {E.num(d.L * fi['dias'])} días): mientras va en camino (zona sombreada) el "
+                              "inventario sigue bajando, y para eso existe el punto de reorden.")
+            st.caption(texto)
 
 # ---------------------------------------------------------------- descarga
 exp = tabla.copy()

@@ -226,7 +226,10 @@ def _fechas_en_x(fig):
         x = getattr(tr, "x", None)
         if x is None or len(x) == 0:
             continue
-        arr = np.asarray(x)
+        arr = np.asarray([v for v in x if v is not None], dtype=object)
+        if len(arr) == 0:
+            continue          # trazas vacías (por ejemplo, solo para la leyenda)
+        arr = np.asarray(arr.tolist())
         if not (np.issubdtype(arr.dtype, np.datetime64) or
                 (arr.dtype == object and isinstance(arr.flat[0], (pd.Timestamp, np.datetime64)))
                 or hasattr(arr.flat[0], "year")):

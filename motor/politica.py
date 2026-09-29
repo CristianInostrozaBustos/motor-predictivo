@@ -52,6 +52,25 @@ class Decision:
     z: float = 1.282
 
 
+def _suma(x: np.ndarray, desde: int, largo: float) -> float:
+    """Suma de x desde `desde` durante `largo` períodos (admite fracción: 35,4 períodos = 35 completos + 0,4 del
+    siguiente). Si el pronóstico se acaba, los períodos que faltan se completan con el promedio de la ventana."""
+    n = len(x)
+    enteros = int(np.floor(largo))
+    frac = largo - enteros
+    tramo = x[desde:min(n, desde + enteros + (1 if frac > 0 else 0))]
+    if len(tramo) == 0:
+        tramo = x[-1:]
+    pesos = np.ones(len(tramo))
+    if frac > 0 and len(tramo) == enteros + 1:
+        pesos[-1] = frac
+    total = float((tramo * pesos).sum())
+    faltan = largo - pesos.sum()
+    if faltan > 1e-9:
+        total += faltan * float(tramo.mean())
+    return total
+
+
 def decidir(entidad: str, pron: pd.DataFrame, freq: str, par: Parametros) -> Decision:
     dias = FRECUENCIAS[freq]["dias"]
     L = max(par.lead_time_dias / dias, 1e-6)
@@ -66,8 +85,10 @@ def decidir(entidad: str, pron: pd.DataFrame, freq: str, par: Parametros) -> Dec
     sigma = float(((ventana["P90"] - ventana["P10"]) / (2 * Z_P10_P90)).clip(lower=0).mean())
     z = Z_NIVEL[par.nivel_servicio]
     ss = z * sigma * np.sqrt(L)
-    rop = d * L + ss
-    meta = d * (L + P) + ss
+    p50 = pron["P50"].to_numpy(float)
+    # el punto de reorden cubre la demanda pronosticada mientras llega el pedido (no un promedio)
+    rop = _suma(p50, 0, L) + ss
+    meta = _suma(p50, 0, L + P) + ss
 
     I = par.inventario_actual
     if I is None or np.isnan(I):
@@ -79,12 +100,15 @@ def decidir(entidad: str, pron: pd.DataFrame, freq: str, par: Parametros) -> Dec
     elif I <= rop:
         estado, cantidad, hasta, fecha = "Pedir ahora", max(0.0, meta - I), 0.0, pron["fecha"].iloc[0]
     else:
-        proy = I - pron["P50"].cumsum().to_numpy()
-        cruce = np.where(proy <= rop)[0]
-        if len(cruce):
-            k = int(cruce[0])
-            hasta, fecha = float(k + 1), pron["fecha"].iloc[k]
-            cantidad = max(0.0, meta - proy[k])
+        # el próximo pedido sale de la misma simulación que el gráfico: el punto de reorden de ese día,
+        # recalculado con la demanda que vendrá entonces (no el de hoy)
+        from .escenarios import simular as simular_base
+        rop_t, meta_t, _ = politica_dinamica(pron, L, P, z)
+        sim = simular_base(pron["fecha"].to_numpy(), p50, I, rop_t, meta_t, L)
+        ped = sim.index[sim["pedido"] > 0]
+        if len(ped):
+            k = int(ped[0])
+            hasta, fecha, cantidad = float(k + 1), pron["fecha"].iloc[k], float(sim["pedido"].iloc[k])
         else:
             hasta, fecha, cantidad = None, None, 0.0
         estado = "Stock suficiente"
@@ -103,12 +127,13 @@ def politica_dinamica(pron: pd.DataFrame, L, P: float, z: float):
     sig = ((pron["P90"] - pron["P10"]).to_numpy(float) / (2 * Z_P10_P90)).clip(min=0)
     rop, meta, ss = np.zeros(n), np.zeros(n), np.zeros(n)
     for t in range(n):
+        # en el período t la demanda de t ya ocurrió: se cubre desde t+1 hasta que llegue el pedido
         w = max(1, int(np.ceil(L[t] + P)))
-        sl = slice(t, min(n, t + w)) if t < n else slice(n - 1, n)
-        d, sg = p50[sl].mean(), sig[sl].mean()
+        sl = slice(min(t + 1, n - 1), min(n, t + 1 + w))
+        sg = sig[sl].mean()
         ss[t] = z * sg * np.sqrt(L[t])
-        rop[t] = d * L[t] + ss[t]
-        meta[t] = d * (L[t] + P) + ss[t]
+        rop[t] = _suma(p50, t + 1, L[t]) + ss[t]
+        meta[t] = _suma(p50, t + 1, L[t] + P) + ss[t]
     return rop, meta, ss
 
 
