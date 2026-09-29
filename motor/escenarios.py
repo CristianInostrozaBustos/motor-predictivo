@@ -42,6 +42,7 @@ class Evento:
     valor: float           # % (como fracción) para demanda/precio/exógena; días para retraso; ignorado en promoción
     var: str | None = None  # variable exógena (solo tipo "exogena")
     elasticidad: float | None = None  # solo precio: si se da, el efecto se calcula con esta elasticidad y no con el modelo
+    costo_alt: float | None = None    # solo retraso: costo unitario del proveedor alternativo (si se quiere evaluar cubrir con él)
 
 
 @dataclass
@@ -70,11 +71,22 @@ class Escenario:
         k += sum(ev.elasticidad * ev.valor for ev in self.eventos if ev.tipo == "precio" and ev.elasticidad is not None)
         return k
 
+    def cambio_precio(self) -> float:
+        """Cambio % (fracción) del precio de venta durante el evento."""
+        return sum(ev.valor for ev in self.eventos if ev.tipo == "precio")
+
+    def costo_alternativo(self):
+        for ev in self.eventos:
+            if ev.tipo == "retraso" and ev.costo_alt:
+                return float(ev.costo_alt)
+        return None
+
     def retraso_dias(self) -> float:
         return sum(ev.valor for ev in self.eventos if ev.tipo == "retraso")
 
     def clave(self) -> tuple:
-        return (tuple((e.tipo, round(e.valor, 6), e.var, e.elasticidad) for e in self.eventos), self.desde, self.duracion)
+        return (tuple((e.tipo, round(e.valor, 6), e.var, e.elasticidad, e.costo_alt) for e in self.eventos),
+                self.desde, self.duracion)
 
 
 def aplicar_shock(pron: pd.DataFrame, esc: Escenario) -> pd.DataFrame:
@@ -142,6 +154,7 @@ class Comparacion:
     sim_ajustada: pd.DataFrame | None
     inicio_ajuste: int = 0
     resumen: dict = field(default_factory=dict)
+    sim_alternativo: pd.DataFrame | None = None   # cubrir el retraso con el proveedor alternativo (sin retraso)
 
 
 def _anticipar(L, k):
@@ -194,7 +207,12 @@ def comparar(entidad, pron_base, pron_esc_modelo, par: Parametros, esc: Escenari
         s_sin = simular(f, pron_esc["P50"].to_numpy(), I0, rop_b, meta_b, lt_esc)
         s_aj = simular(f, pron_esc["P50"].to_numpy(), I0, rop_e, meta_e, lt_esc)
         sims = (s_base, s_sin, s_aj)
-        for nombre, s in (("base", s_base), ("sin_ajuste", s_sin), ("ajustada", s_aj)):
+        mundos = [("base", s_base), ("sin_ajuste", s_sin), ("ajustada", s_aj)]
+        if esc.retraso_dias() and esc.costo_alternativo():
+            # los pedidos del evento se compran al proveedor alternativo, que llega en el lead time normal
+            s_alt = simular(f, pron_esc["P50"].to_numpy(), I0, rop_b, meta_b, lt_base)
+            mundos.append(("alternativo", s_alt))
+        for nombre, s in mundos:
             resumen[f"quiebre_{nombre}"] = int(s["quiebre"].sum())
             resumen[f"perdida_{nombre}"] = float(s["no_atendida"].sum())
             resumen[f"inv_prom_{nombre}"] = float(s["inventario"].mean())
@@ -208,8 +226,11 @@ def comparar(entidad, pron_base, pron_esc_modelo, par: Parametros, esc: Escenari
         resumen["perdida_extra_aj"] = max(0.0, resumen["perdida_ajustada"] - resumen["perdida_base"])
         # diferencias mínimas (menos de 0,5% de la demanda del horizonte) son ruido de la simulación discreta:
         # los pedidos se corren un día y un quiebre que ya existía cae en otra fecha
+        if len(mundos) == 4:
+            resumen["quiebre_extra_alt"] = max(0, resumen["quiebre_alternativo"] - resumen["quiebre_base"])
+            resumen["perdida_extra_alt"] = max(0.0, resumen["perdida_alternativo"] - resumen["perdida_base"])
         tolerancia = 0.005 * float(pron_base["P50"].sum())
-        for k in ("sin", "aj"):
+        for k in [k for k in ("sin", "aj", "alt") if f"perdida_extra_{k}" in resumen]:
             if resumen[f"perdida_extra_{k}"] < tolerancia:
                 resumen[f"quiebre_extra_{k}"], resumen[f"perdida_extra_{k}"] = 0, 0.0
     resumen["demanda_base"] = float(pron_base["P50"].sum())
@@ -218,5 +239,72 @@ def comparar(entidad, pron_base, pron_esc_modelo, par: Parametros, esc: Escenari
     resumen["demanda_base_evento"] = float(pron_base["P50"].iloc[ev].sum())
     resumen["demanda_esc_evento"] = float(pron_esc["P50"].iloc[ev].sum())
     resumen["dias_por_periodo"] = dias
-    return Comparacion(entidad, pron_base, pron_esc, dec_base, dec_esc, *sims, inicio_ajuste=inicio_ajuste,
+    # ¿el evento cambia algo del inventario? (si no, las tres curvas son la misma)
+    if sims[0] is not None:
+        ref = np.maximum(np.abs(sims[0]["inventario"].to_numpy()).max(), 1.0)
+        resumen["inventario_igual"] = bool(
+            np.abs(sims[1]["inventario"].to_numpy() - sims[0]["inventario"].to_numpy()).max() < 0.002 * ref and
+            np.abs(sims[2]["inventario"].to_numpy() - sims[0]["inventario"].to_numpy()).max() < 0.002 * ref)
+        ped = sims[0][sims[0]["pedido"] > 0]
+        resumen["pedidos_en_evento"] = int(((ped.index >= esc.desde) & (ped.index < esc.hasta)).sum())
+        resumen["proximo_pedido"] = ped["fecha"].iloc[0] if len(ped) else None
+    comp = Comparacion(entidad, pron_base, pron_esc, dec_base, dec_esc, *sims, inicio_ajuste=inicio_ajuste,
                        resumen=resumen)
+    if sims[0] is not None and len(mundos) == 4:
+        comp.sim_alternativo = mundos[3][1]
+    return comp
+
+
+# ---------------------------------------------------------------- dinero
+
+def precio_por_periodo(precio: float, esc: Escenario, n: int) -> np.ndarray:
+    p = np.full(n, float(precio))
+    p[esc.desde:esc.hasta] *= 1 + esc.cambio_precio()
+    return p
+
+
+def impacto_dinero(comp: Comparacion, esc: Escenario, precio: float | None, costo: float | None,
+                   costo_principal: float | None = None) -> pd.DataFrame | None:
+    """Ingresos, costo y margen de cada mundo sobre el horizonte analizado.
+
+    Las unidades vendidas son la demanda atendida (la simulación con venta perdida) o, si no hay
+    inventario, la demanda pronosticada. El costo es el de lo vendido; si se cubre el retraso con el
+    proveedor alternativo, los pedidos emitidos durante el evento pagan la diferencia de costo.
+    """
+    if precio is None or not np.isfinite(precio) or precio <= 0:
+        return None
+    n = len(comp.base)
+    p_base = np.full(n, float(precio))
+    p_esc = precio_por_periodo(precio, esc, n)
+    c = float(costo) if costo is not None and np.isfinite(costo) and costo > 0 else None
+
+    def vendidas(sim, pron):
+        if sim is not None:
+            return (sim["demanda"] - sim["no_atendida"]).to_numpy(), sim["no_atendida"].to_numpy()
+        return pron["P50"].to_numpy(), np.zeros(n)
+
+    mundos = [("Sin el evento", comp.sim_base, comp.base, p_base),
+              ("Con el evento, sin ajustar", comp.sim_sin_ajuste, comp.escenario, p_esc)]
+    if comp.sim_base is not None:
+        mundos.append(("Con el evento, ajustando", comp.sim_ajustada, comp.escenario, p_esc))
+    if comp.sim_alternativo is not None:
+        mundos.append(("Con el evento, proveedor alternativo", comp.sim_alternativo, comp.escenario, p_esc))
+
+    filas = []
+    for nombre, sim, pron, p in mundos:
+        v, perdida = vendidas(sim, pron)
+        fila = {"mundo": nombre, "precio_evento": float(p[esc.desde:esc.hasta].mean()) if esc.duracion else float(p[0]),
+                "unidades": float(v.sum()), "ingresos": float((v * p).sum()),
+                "ventas_perdidas": float((perdida * p).sum()), "unidades_perdidas": float(perdida.sum())}
+        sobrecosto = 0.0
+        c_pri = costo_principal if costo_principal else c
+        if nombre.endswith("alternativo") and c_pri and sim is not None:
+            c_alt = esc.costo_alternativo()
+            ped = sim["pedido"].to_numpy()
+            sobrecosto = float(ped[esc.desde:esc.hasta].sum() * max(0.0, c_alt - c_pri))
+        fila["sobrecosto"] = sobrecosto
+        if c is not None:
+            fila["costo"] = float(v.sum() * c) + sobrecosto
+            fila["margen"] = fila["ingresos"] - fila["costo"]
+        filas.append(fila)
+    return pd.DataFrame(filas)
