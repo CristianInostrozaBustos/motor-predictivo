@@ -109,7 +109,8 @@ def lead_time_por_periodo(lt_dias: float, esc: Escenario, n: int, freq: str) -> 
 
 # ---------------------------------------------------------------- simulación
 
-def simular(fechas, demanda, inventario0, rop, meta, lt_periodos, plan=None) -> pd.DataFrame:
+def simular(fechas, demanda, inventario0, rop, meta, lt_periodos, plan=None, manuales=None,
+            auto_desde: int = 0) -> pd.DataFrame:
     """Simulación período a período con venta perdida (el inventario no baja de cero).
 
     rop, meta y lt_periodos pueden ser escalares o arreglos por período. Cuando la posición
@@ -120,12 +121,16 @@ def simular(fechas, demanda, inventario0, rop, meta, lt_periodos, plan=None) -> 
     período adelante: si esperar hasta mañana deja la posición bajo el punto de reorden de mañana, se pide hoy.
     Sin esto, con revisión diaria el pedido sale cuando la posición ya está hasta un día de demanda bajo el
     punto de reorden, y si el stock de seguridad es menor que un día de demanda se produce un quiebre.
+
+    `manuales` son compras decididas por el usuario: {período de emisión: (cantidad, lead time en períodos)}.
+    Las compras automáticas solo ocurren desde el período `auto_desde` (antes, decide el usuario).
     """
     n = len(demanda)
     rop = np.broadcast_to(np.asarray(rop, float), (n,))
     meta = np.broadcast_to(np.asarray(meta, float), (n,))
     lt = np.broadcast_to(np.asarray(lt_periodos, float), (n,))
     plan = np.asarray(demanda if plan is None else plan, float)
+    manuales = manuales or {}
     I = float(inventario0)
     transito = []
     filas = []
@@ -139,13 +144,23 @@ def simular(fechas, demanda, inventario0, rop, meta, lt_periodos, plan=None) -> 
         I -= atendida
         posicion = I + sum(q for _, q in transito)
         pedido = 0.0
-        manana = t + 1 < n and posicion - plan[t + 1] < rop[t + 1]
-        if posicion <= rop[t] or manana:
-            pedido = max(0.0, meta[t] - posicion)
-            if pedido > 0:
-                transito.append((t + max(1, int(np.ceil(lt[t]))), pedido))
-        filas.append(dict(fecha=fechas[t], demanda=d, inventario=I, llegada=llega, pedido=pedido,
-                          no_atendida=perdida, quiebre=perdida > 1e-9, rop=rop[t]))
+        manual = 0.0
+        if t in manuales:
+            q, lt_m = manuales[t]
+            if q > 0:
+                manual = float(q)
+                transito.append((t + max(1, int(np.ceil(lt_m))), manual))
+                posicion += manual
+        elif t >= auto_desde:
+            manana = t + 1 < n and posicion - plan[t + 1] < rop[t + 1]
+            if posicion <= rop[t] or manana:
+                pedido = max(0.0, meta[t] - posicion)
+                if pedido > 0:
+                    transito.append((t + max(1, int(np.ceil(lt[t]))), pedido))
+                    posicion += pedido
+        filas.append(dict(fecha=fechas[t], demanda=d, inventario=I, llegada=llega, pedido=pedido + manual,
+                          pedido_manual=manual, no_atendida=perdida, quiebre=perdida > 1e-9, rop=rop[t],
+                          meta=meta[t], posicion=posicion))
     return pd.DataFrame(filas)
 
 

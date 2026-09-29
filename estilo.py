@@ -58,6 +58,11 @@ def clp(x):
     return f"{signo}${num(abs(x))}"
 
 
+def clp_md(x):
+    """Monto para textos con Markdown (captions, deltas): el $ se escapa para que no se lea como fórmula."""
+    return clp(x).replace("$", "\\$")
+
+
 def mes_es(periodo):
     ts = periodo.to_timestamp() if hasattr(periodo, "to_timestamp") else pd.Timestamp(periodo)
     return f"{MESES_ES[ts.month - 1].capitalize()} {ts.year}"
@@ -291,6 +296,11 @@ def excel_bytes(hojas):
             df.to_excel(writer, sheet_name=nombre[:31], index=False)
             hoja = writer.sheets[nombre[:31]]
             for col in hoja.columns:
+                for c in col[1:]:
+                    if hasattr(c.value, "year"):          # fechas en formato chileno
+                        c.number_format = "DD/MM/YYYY"
+                    elif isinstance(c.value, float):
+                        c.number_format = "#,##0" if float(c.value).is_integer() else "#,##0.0"
                 ancho = max(len(str(c.value)) if c.value is not None else 0 for c in col)
                 hoja.column_dimensions[col[0].column_letter].width = min(40, max(12, ancho + 2))
     return buffer.getvalue()

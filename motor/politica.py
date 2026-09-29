@@ -95,23 +95,25 @@ def decidir(entidad: str, pron: pd.DataFrame, freq: str, par: Parametros) -> Dec
         return Decision(entidad, d, sigma, L, P, ss, rop, meta, None, "Sin inventario", 0.0, None, None, None, aviso, z)
 
     cobertura = I / d * dias if d > 0 else np.inf
-    if I <= ss:
-        estado, cantidad, hasta, fecha = "Riesgo de quiebre", max(0.0, meta - I), 0.0, pron["fecha"].iloc[0]
-    elif I <= rop:
-        estado, cantidad, hasta, fecha = "Pedir ahora", max(0.0, meta - I), 0.0, pron["fecha"].iloc[0]
+    # fecha y cantidad del próximo pedido: salen de la misma simulación que se grafica, para que la tabla,
+    # el texto y el gráfico digan lo mismo (el punto de reorden de ese día se recalcula con la demanda de entonces)
+    from .escenarios import simular as simular_base
+    rop_t, meta_t, _ = politica_dinamica(pron, L, P, z)
+    sim = simular_base(pron["fecha"].to_numpy(), p50, I, rop_t, meta_t, L)
+    ped = sim.index[sim["pedido"] > 0]
+    if len(ped):
+        k = int(ped[0])
+        hasta, fecha, cantidad = float(k), pron["fecha"].iloc[k], float(sim["pedido"].iloc[k])
     else:
-        # el próximo pedido sale de la misma simulación que el gráfico: el punto de reorden de ese día,
-        # recalculado con la demanda que vendrá entonces (no el de hoy)
-        from .escenarios import simular as simular_base
-        rop_t, meta_t, _ = politica_dinamica(pron, L, P, z)
-        sim = simular_base(pron["fecha"].to_numpy(), p50, I, rop_t, meta_t, L)
-        ped = sim.index[sim["pedido"] > 0]
-        if len(ped):
-            k = int(ped[0])
-            hasta, fecha, cantidad = float(k + 1), pron["fecha"].iloc[k], float(sim["pedido"].iloc[k])
-        else:
-            hasta, fecha, cantidad = None, None, 0.0
+        hasta, fecha, cantidad = None, None, 0.0
+    if I <= ss:
+        estado = "Riesgo de quiebre"
+    elif I <= rop or (hasta is not None and hasta == 0):
+        estado = "Pedir ahora"
+    else:
         estado = "Stock suficiente"
+    if estado != "Stock suficiente" and (hasta is None or hasta > 0):
+        hasta, fecha, cantidad = 0.0, pron["fecha"].iloc[0], max(0.0, meta - I)
     return Decision(entidad, d, sigma, L, P, ss, rop, meta, I, estado, cantidad, hasta, cobertura, fecha, aviso, z)
 
 
@@ -137,7 +139,7 @@ def politica_dinamica(pron: pd.DataFrame, L, P: float, z: float):
     return rop, meta, ss
 
 
-def simular(pron: pd.DataFrame, dec: Decision) -> pd.DataFrame:
+def simular(pron: pd.DataFrame, dec: Decision, manuales: dict | None = None, auto_desde: int = 0) -> pd.DataFrame:
     """Inventario proyectado aplicando la política sobre el P50, recalculada período a período.
 
     Cada vez que la posición de inventario (disponible + en tránsito) cae bajo el ROP vigente se pide
@@ -147,10 +149,58 @@ def simular(pron: pd.DataFrame, dec: Decision) -> pd.DataFrame:
         return pd.DataFrame()
     from .escenarios import simular as simular_base
     rop, meta, ss = politica_dinamica(pron, dec.L, dec.P, dec.z)
-    sim = simular_base(pron["fecha"].to_numpy(), pron["P50"].to_numpy(), dec.inventario, rop, meta, dec.L)
+    sim = simular_base(pron["fecha"].to_numpy(), pron["P50"].to_numpy(), dec.inventario, rop, meta, dec.L,
+                       manuales=manuales, auto_desde=auto_desde)
     sim["ss"] = ss
-    sim["meta"] = meta
     return sim
+
+
+def evaluar_plan(sug: pd.DataFrame, tuyo: pd.DataFrame, hasta: int, precio=None, costo=None, dias_periodo=1.0) -> dict:
+    """Compara la sugerencia del modelo con el plan del usuario.
+
+    `hasta` es el período desde el que el modelo vuelve a comprar solo (el tramo que decidió el usuario es
+    [0, hasta)). Devuelve unidades, gasto, ahorro, pérdidas y cuándo se normaliza la operación.
+    Los montos solo se calculan si hay precio (ventas) o costo (compras).
+    """
+    n = len(sug)
+    r = {}
+    tramo = slice(0, min(hasta, n))
+    r["compra_sug"] = float(sug["pedido"].iloc[tramo].sum())
+    r["compra_tuya"] = float(tuyo["pedido"].iloc[tramo].sum())
+    r["compra_total_sug"] = float(sug["pedido"].sum())
+    r["compra_total_tuya"] = float(tuyo["pedido"].sum())
+    r["quiebres_sug"] = int(sug["quiebre"].sum())
+    r["quiebres_tuyo"] = int(tuyo["quiebre"].sum())
+    r["perdida_sug"] = float(sug["no_atendida"].sum())
+    r["perdida_tuya"] = float(tuyo["no_atendida"].sum())
+    r["perdida_extra"] = max(0.0, r["perdida_tuya"] - r["perdida_sug"])
+    r["inv_prom_sug"] = float(sug["inventario"].mean())
+    r["inv_prom_tuyo"] = float(tuyo["inventario"].mean())
+    q = np.where(tuyo["quiebre"].to_numpy())[0]
+    r["primer_quiebre"] = tuyo["fecha"].iloc[q[0]] if len(q) else None
+    r["ultimo_quiebre"] = tuyo["fecha"].iloc[q[-1]] if len(q) else None
+    # la operación se normaliza cuando ya no hay quiebres y el inventario vuelve a parecerse al sugerido
+    ref = max(float(sug["inventario"].max()), 1.0)
+    cerca = np.abs(tuyo["inventario"].to_numpy() - sug["inventario"].to_numpy()) <= 0.05 * ref
+    desde = int(q[-1]) + 1 if len(q) else min(hasta, n - 1)
+    idx = next((t for t in range(desde, n) if cerca[t:].all()), None)
+    r["normaliza"] = tuyo["fecha"].iloc[idx] if idx is not None else None
+    r["dias_normaliza"] = (idx * dias_periodo) if idx is not None else None
+    if costo:
+        r["gasto_sug"] = r["compra_sug"] * costo
+        r["gasto_tuyo"] = r["compra_tuya"] * costo
+        r["ahorro_caja"] = r["gasto_sug"] - r["gasto_tuyo"]
+    if precio:
+        r["ventas_perdidas"] = r["perdida_extra"] * precio
+        demanda_dia = float(sug["demanda"].mean()) / dias_periodo
+        if costo and precio > costo:
+            r["margen_perdido"] = r["perdida_extra"] * (precio - costo)
+            margen_dia = demanda_dia * (precio - costo)
+            r["dias_absorber"] = r["margen_perdido"] / margen_dia if margen_dia > 0 else None
+        else:
+            ingreso_dia = demanda_dia * precio
+            r["dias_absorber"] = r["ventas_perdidas"] / ingreso_dia if ingreso_dia > 0 else None
+    return r
 
 
 def lead_time_dataset(serie_lead: pd.Series) -> float:

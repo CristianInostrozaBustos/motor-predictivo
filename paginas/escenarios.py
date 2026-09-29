@@ -441,24 +441,24 @@ if dp.tiene("precio"):
 
         k1, k2, k3, k4 = st.columns(4)
         k1.metric("Precio de venta en el evento", E.clp(sa["precio_evento"]),
-                  delta=f"antes {E.clp(precio_ent)}" if abs(cp) > 1e-9 else "sin cambio",
+                  delta=f"antes {E.clp_md(precio_ent)}" if abs(cp) > 1e-9 else "sin cambio",
                   delta_color="off", delta_arrow="off")
         dif_ing = sa["ingresos"] - b["ingresos"]
         k2.metric("Ingresos, sin ajustar", E.clp(sa["ingresos"]),
-                  delta=f"{E.clp(dif_ing).replace('−', '-')} vs. sin evento" if abs(dif_ing) >= 1 else "igual que sin evento",
+                  delta=f"{E.clp_md(dif_ing).replace('−', '-')} vs. sin evento" if abs(dif_ing) >= 1 else "igual que sin evento",
                   delta_color="normal" if abs(dif_ing) >= 1 else "off", delta_arrow="auto" if abs(dif_ing) >= 1 else "off")
         perd_sa = max(0.0, sa["ventas_perdidas"] - b["ventas_perdidas"])
         perd_aj = max(0.0, aj["ventas_perdidas"] - b["ventas_perdidas"]) if aj is not None else None
         k3.metric("Ventas perdidas por quiebres", E.clp(perd_sa) if hay_inv else "—",
-                  delta=(f"{E.clp(perd_aj)} ajustando a tiempo" if perd_aj is not None else None),
+                  delta=(f"{E.clp_md(perd_aj)} ajustando a tiempo" if perd_aj is not None else None),
                   delta_color="off", delta_arrow="off",
                   help="Unidades que no se atienden por falta de stock (por sobre las que ya faltarían sin el evento) × precio.")
         if hay_costo:
             dif_m = sa["margen"] - b["margen"]
             k4.metric("Margen, sin ajustar", E.clp(sa["margen"]),
-                      delta=f"{E.clp(dif_m).replace('−', '-')} vs. sin evento" if abs(dif_m) >= 1 else "igual que sin evento",
+                      delta=f"{E.clp_md(dif_m).replace('−', '-')} vs. sin evento" if abs(dif_m) >= 1 else "igual que sin evento",
                       delta_color="normal" if abs(dif_m) >= 1 else "off", delta_arrow="auto" if abs(dif_m) >= 1 else "off",
-                      help=f"Ingresos menos el costo de lo vendido (costo unitario {E.clp(costo_ent)}).")
+                      help=f"Ingresos menos el costo de lo vendido (costo unitario {E.clp_md(costo_ent)}).")
         else:
             k4.metric("Margen", "—", help="Ingresa el costo por unidad en «Precio y costo usados» para ver el margen.")
 
