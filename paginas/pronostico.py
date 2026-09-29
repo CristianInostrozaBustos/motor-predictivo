@@ -137,9 +137,8 @@ if "Prueba con datos pasados" in (vistas or []):
     con_bt = [e for e in ver if e in res.backtest]
     SUMA = f"Suma de los {len(con_bt)} seleccionados" if sel is not None else f"Total de {S.nombre_entidad(dp, True)}"
     if len(con_bt) > 1:
-        c_bt, _ = st.columns([1, 2])
-        prueba = c_bt.selectbox(f"Ver la prueba de", con_bt + [SUMA],
-                                index=0 if sel is not None else len(con_bt), key="bt_ent")
+        prueba = S.elegir_uno("Ver la prueba de", con_bt + [SUMA], key="bt", estado="bt_ent",
+                              defecto=con_bt[0] if sel is not None else SUMA)
     else:
         prueba = con_bt[0]
     if prueba == SUMA:

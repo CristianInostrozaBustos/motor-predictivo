@@ -297,20 +297,40 @@ def titulo_seleccion(sel, dp):
     return f"{len(sel)} {nombre_entidad(dp, True)}"
 
 
+MAX_BOTONES = 12   # con más opciones que esto, los botones no caben y se usa una lista desplegable
+
+
+def elegir_uno(etiqueta, opciones, key, estado, defecto=None, formato=None):
+    """Selector de UNA opción con el mismo estilo en todo el sitio: botones (pills) si caben,
+    lista desplegable si hay muchas. `estado` es la clave de session_state donde se recuerda la elección."""
+    opciones = list(opciones)
+    if st.session_state.get(estado) not in opciones:
+        st.session_state[estado] = defecto if defecto in opciones else opciones[0]
+    if len(opciones) == 1:
+        return opciones[0]
+    kw = f"_uno_{key}"
+    st.session_state[kw] = st.session_state[estado]
+
+    def _sync_uno():
+        v = st.session_state.get(kw)
+        if v is not None:          # volver a tocar el botón activo no lo deja vacío
+            st.session_state[estado] = v
+
+    kwargs = dict(key=kw, on_change=_sync_uno)
+    if formato:
+        kwargs["format_func"] = formato
+    if len(opciones) <= MAX_BOTONES:
+        st.pills(etiqueta, opciones, selection_mode="single", **kwargs)
+    else:
+        c1, _ = st.columns([1, 2])
+        with c1:
+            st.selectbox(etiqueta, opciones, **kwargs)
+    return st.session_state[estado]
+
+
 def selector_entidad(entidades, dp, key="ent"):
     """Selector de una sola entidad, visible en la página (no en la barra lateral)."""
-    entidades = list(entidades)
-    if st.session_state.get("entidad") not in entidades:
-        st.session_state["entidad"] = entidades[0]
-    if len(entidades) == 1:
-        return entidades[0]
-    kw = f"_ent_{key}"
-    st.session_state[kw] = st.session_state["entidad"]
-    nom = nombre_entidad(dp)
-    c1, _ = st.columns([1, 2])
-    c1.selectbox(mayus(nom), entidades, key=kw,
-                 on_change=_sync, args=(kw, "entidad"))
-    return st.session_state[kw]
+    return elegir_uno(mayus(nombre_entidad(dp)), entidades, key=key, estado="entidad")
 
 
 def panel_dataset():

@@ -160,14 +160,15 @@ with st.container(border=True):
                     st.caption("Se activa una promoción durante todo el evento; el modelo estima su efecto.")
                     eventos.append(X.Evento("promocion", 1.0))
                 elif t == "exogena":
-                    var = st.selectbox("Variable", otras, format_func=lambda v: dp.etiquetas.get(v, v), key="esc_var")
+                    var = S.elegir_uno("Variable", otras, key="var", estado="esc_var",
+                                       formato=lambda v: dp.etiquetas.get(v, v))
                     v = st.slider("Cambio (%)", -60, 150, 30, 5, key="esc_exo")
                     eventos.append(X.Evento("exogena", v / 100, var))
 
     st.markdown("**¿Cuándo y a quién?**")
-    c1, c2, c3 = st.columns(3)
-    alcance = c1.selectbox("Afecta a", (["Todas"] if len(entidades) > 1 else []) + entidades, key="esc_alcance",
-                           format_func=lambda x: f"Todas las {S.nombre_entidad(dp, True)}" if x == "Todas" else x)
+    alcance = S.elegir_uno("Afecta a", (["Todas"] if len(entidades) > 1 else []) + entidades, key="alc",
+                           estado="esc_alcance", formato=lambda x: "Todos" if x == "Todas" else x)
+    c2, c3 = st.columns(2)
     adelanto = {"D": pd.Timedelta(days=14), "W": pd.Timedelta(weeks=2), "M": pd.DateOffset(months=1), "Q": pd.DateOffset(months=3)}[freq]
     # el retraso solo se nota si el evento incluye un pedido: se sugiere empezar en el próximo pedido
     ref_ent = alcance if alcance != "Todas" else None
