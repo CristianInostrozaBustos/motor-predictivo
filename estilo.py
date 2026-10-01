@@ -41,6 +41,11 @@ def color_sku(sku, skus):
     return SERIES[sorted(skus).index(sku) % len(SERIES)]
 
 
+def rgba(color_hex, alfa):
+    h = color_hex.lstrip("#")
+    return f"rgba({int(h[0:2], 16)},{int(h[2:4], 16)},{int(h[4:6], 16)},{alfa})"
+
+
 # ---------------------------------------------------------------- formato chileno
 
 def num(x, dec=0):

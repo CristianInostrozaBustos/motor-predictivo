@@ -1,3 +1,4 @@
+import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
@@ -74,74 +75,51 @@ else:
     else:
         fut_v, df_v, obj_v, fmt, hov, div = fut, dp.df, obj, E.num, "%{y:,.0f}", 1.0
     sel = [e for e in sel if e in ver]
-    comparar = len(sel) > 1
     nombre_vista = S.titulo_seleccion(sel, dp)
 
-    base = df_v[df_v["entidad"].isin(ver)]
-    hist = base.groupby("fecha", as_index=False)["objetivo"].sum()
-    pr = pd.concat([fut_v[e] for e in ver]).groupby("fecha", as_index=False)[["P10", "P50", "P90"]].sum()
+    hist = pd.DataFrame({"fecha": sorted(df_v.loc[df_v["entidad"].isin(ver), "fecha"].unique())})
 
     if vista == "Pronóstico":
-        anterior = hist["objetivo"].tail(H).sum()
-        total_p50 = pr["P50"].sum()
-        var = (total_p50 - anterior) / anterior * 100 if anterior > 0 else None
-        if not comparar:
-            c1, c2, c3, c4 = st.columns(4)
-            c1.metric(f"Esperado ({H} {fi['unidad_pl']})", fmt(total_p50))
-            c2.metric(f"Promedio por {fi['unidad']}", fmt(pr["P50"].mean()))
-            c3.metric(f"Vs. últimos {H} {fi['unidad_pl']}", E.pct(var) if var is not None else "—",
-                      delta=("sube" if var > 0 else "baja") if var is not None else None,
-                      delta_color="off", delta_arrow="off")
-            c4.metric("Escenario alto (P90)", fmt(pr["P90"].sum()),
-                      delta=f"bajo (P10): {fmt(pr['P10'].sum()).replace('$', chr(92) + '$')}",
-                      delta_color="off", delta_arrow="off",
-                      help="Rango probable entre el escenario bajo y el alto para el período.")
-        else:
-            filas_r = []
-            for e in sel:
-                f = fut_v[e]
-                h_e = df_v[df_v["entidad"] == e]["objetivo"].tail(H).sum()
-                v_e = (f["P50"].sum() - h_e) / h_e * 100 if h_e > 0 else None
-                filas_r.append({nom_col: e, f"Esperado ({H} {fi['unidad_pl']})": fmt(f["P50"].sum()),
-                                f"Promedio por {fi['unidad']}": fmt(f["P50"].mean()),
-                                f"Vs. últimos {H} {fi['unidad_pl']}": E.pct(v_e) if v_e is not None else "—",
-                                "Rango probable (P10–P90)": f"{fmt(f['P10'].sum())} – {fmt(f['P90'].sum())}"})
-
+        # misma vista para uno o varios productos: cada uno con su color, su historial, su pronóstico y su rango
         atras = min(len(hist), max(3 * H, {"D": 120, "W": 52, "M": 36, "Q": 12}[dp.config.frecuencia]))
         desde = hist["fecha"].iloc[-atras]
-        if not comparar:
-            h_ver = hist.tail(atras)
-            fig = E.fig_banda(pr["fecha"], pr["P10"], pr["P50"], pr["P90"], nombre_banda="Rango probable (P10–P90)",
-                              nombre_p50="Pronóstico", hover=hov)
-            fig.add_trace(go.Scatter(x=h_ver["fecha"], y=h_ver["objetivo"], name="Historial",
-                                     line=dict(color=E.TINTA, width=1.5), hovertemplate=hov))
-        else:
-            fig = go.Figure()
-            for e in sel:
-                col = E.color_sku(e, entidades)
-                g = df_v[(df_v["entidad"] == e) & (df_v["fecha"] >= desde)]
-                fig.add_trace(go.Scatter(x=g["fecha"], y=g["objetivo"], name=str(e), legendgroup=str(e), mode="lines",
-                                         line=dict(color=col, width=1.3), opacity=0.55, hovertemplate=hov))
-                f = fut_v[e]
-                fig.add_trace(go.Scatter(x=f["fecha"], y=f["P50"], name=f"{e} (pronóstico)", legendgroup=str(e),
-                                         showlegend=False, mode="lines", line=dict(color=col, width=2.4),
-                                         hovertemplate=hov + " (pronóstico)"))
+        fig = go.Figure()
+        filas_r = []
+        for e in sel:
+            col = E.color_sku(e, entidades)
+            f = fut_v[e]
+            g = df_v[df_v["entidad"] == e]
+            g_ver = g[g["fecha"] >= desde]
+            fig.add_trace(go.Scatter(x=pd.concat([f["fecha"], f["fecha"][::-1]]),
+                                     y=pd.concat([f["P90"], f["P10"][::-1]]), fill="toself",
+                                     fillcolor=E.rgba(col, 0.16), line=dict(width=0), hoverinfo="skip",
+                                     legendgroup=str(e), showlegend=False))
+            fig.add_trace(go.Scatter(x=g_ver["fecha"], y=g_ver["objetivo"], name=str(e), legendgroup=str(e),
+                                     mode="lines", line=dict(color=col, width=1.3), opacity=0.55,
+                                     hovertemplate=hov + " (historial)"))
+            fig.add_trace(go.Scatter(x=f["fecha"], y=f["P50"], name=f"{e} (pronóstico)", legendgroup=str(e),
+                                     showlegend=False, mode="lines", line=dict(color=col, width=2.4),
+                                     customdata=np.stack([f["P10"], f["P90"]], axis=1),
+                                     hovertemplate=hov + " (pronóstico)<br>rango: %{customdata[0]:,.0f} – "
+                                                         "%{customdata[1]:,.0f}"))
+            h_e = g["objetivo"].tail(H).sum()
+            v_e = (f["P50"].sum() - h_e) / h_e * 100 if h_e > 0 else None
+            filas_r.append({nom_col: e, f"Esperado ({H} {fi['unidad_pl']})": fmt(f["P50"].sum()),
+                            f"Promedio por {fi['unidad']}": fmt(f["P50"].mean()),
+                            f"Vs. últimos {H} {fi['unidad_pl']}": E.pct(v_e) if v_e is not None else "—",
+                            "Rango probable (P10–P90)": f"{fmt(f['P10'].sum())} – {fmt(f['P90'].sum())}"})
         fig.add_vline(x=hist["fecha"].iloc[-1], line=dict(color=E.EJE, width=1, dash="dot"))
-        fig.update_layout(title=f"{obj_v} · {nombre_vista}", yaxis_title=obj_v, height=460)
+        fig.update_layout(title=f"{obj_v} · {nombre_vista}", yaxis_title=obj_v, height=460, showlegend=True)
         E.grafico(fig, key="fig_pron")
         supuestos = []
         if dp.tiene("precio"):
             supuestos.append("el precio se mantiene en su último valor")
         if dp.tiene("promocion"):
             supuestos.append("no hay promociones")
-        if comparar:
-            st.caption("Línea tenue: historial. Línea gruesa, a la derecha de la línea punteada: pronóstico. "
-                       f"Para ver el rango de incertidumbre, elige un solo {S.nombre_entidad(dp)}.")
-        else:
-            st.caption("El pronóstico (azul) es el valor más probable. En 8 de cada 10 períodos la realidad debería "
-                       "caer dentro de la banda." + (" Supone que " + " y ".join(supuestos) + "." if supuestos else ""))
-        if comparar:
-            st.dataframe(pd.DataFrame(filas_r), hide_index=True, width="stretch")
+        st.caption("Línea tenue: historial. Línea gruesa, a la derecha de la línea punteada: pronóstico. La franja del "
+                   "mismo color es el rango probable: en 8 de cada 10 períodos la realidad debería caer dentro."
+                   + (" Supone que " + " y ".join(supuestos) + "." if supuestos else ""))
+        st.dataframe(pd.DataFrame(filas_r), hide_index=True, width="stretch")
 
     elif vista == "Tabla":
         tabla = pd.concat([fut_v[e].assign(entidad=e) for e in sel])
@@ -149,7 +127,7 @@ else:
         tabla["fecha"] = tabla["fecha"].dt.strftime("%d/%m/%Y")
         tabla = tabla.rename(columns={"fecha": "Fecha", "entidad": nom_col, "P50": "Pronóstico",
                                       "P10": "Escenario bajo (P10)", "P90": "Escenario alto (P90)"})
-        tabla = tabla[([nom_col] if comparar else []) + ["Fecha", "Pronóstico", "Escenario bajo (P10)",
+        tabla = tabla[[nom_col, "Fecha", "Pronóstico", "Escenario bajo (P10)",
                                                          "Escenario alto (P90)"]]
         st.dataframe(tabla, width="stretch", hide_index=True, height=min(560, 38 + 35 * len(tabla)),
                      column_config={c: st.column_config.NumberColumn(format="%.0f") for c in tabla.columns[-3:]})
@@ -157,24 +135,14 @@ else:
     else:
         st.caption(f"Medido pronosticando los últimos {res.plan.validacion} {fi['unidad_pl']} de tu historial como si "
                    "no los conociéramos, y comparando con lo que realmente pasó.")
-        if len(ver) > 1:
-            m = met.loc[[e for e in ver if e in met.index]]
-            st.dataframe(pd.DataFrame({
-                nom_col: m.index,
-                "Error": m["wape"].map(lambda v: E.pct(v)),
-                "Dentro del rango": m["cobertura"].map(lambda v: E.pct(v)),
-                "Error sin modelo": m["wape_naive"].map(lambda v: E.pct(v)),
-                "Mejora vs. sin modelo": ((m["wape_naive"] - m["wape"]) / m["wape_naive"] * 100).map(lambda v: E.pct(v)),
-            }), width="stretch", hide_index=True)
-        else:
-            m = met.loc[ver[0]]
-            c1, c2, c3 = st.columns(3)
-            c1.metric("Error promedio", E.pct(m["wape"]),
-                      help="Suma de los errores absolutos dividida por la demanda real total (WAPE).")
-            c2.metric("Aciertos dentro del rango", E.pct(m["cobertura"]))
-            mejora = (m["wape_naive"] - m["wape"]) / m["wape_naive"] * 100
-            c3.metric("Mejora vs. repetir la temporada anterior", E.pct(mejora),
-                      delta="mejor" if mejora > 0 else "peor", delta_color="normal" if mejora > 0 else "inverse")
+        m = met.loc[[e for e in ver if e in met.index]]
+        st.dataframe(pd.DataFrame({
+            nom_col: m.index,
+            "Error": m["wape"].map(lambda v: E.pct(v)),
+            "Dentro del rango": m["cobertura"].map(lambda v: E.pct(v)),
+            "Error sin modelo": m["wape_naive"].map(lambda v: E.pct(v)),
+            "Mejora vs. sin modelo": ((m["wape_naive"] - m["wape"]) / m["wape_naive"] * 100).map(lambda v: E.pct(v)),
+        }), width="stretch", hide_index=True)
 
 # ---------------------------------------------------------------- descarga
 todo = pd.concat([f.assign(entidad=e) for e, f in fut.items()])

@@ -127,10 +127,10 @@ with st.container(border=True):
     for e in sel:
         g = dp.df[dp.df["entidad"] == e]
         fig.add_trace(go.Scatter(x=g["fecha"], y=g["objetivo"], name=str(e), mode="lines",
-                                 line=dict(color=E.color_sku(e, todas) if len(sel) > 1 else E.AZUL, width=1.4),
+                                 line=dict(color=E.color_sku(e, todas), width=1.4),
                                  hovertemplate="%{y:,.0f}"))
     fig.update_layout(title=f"{dp.etiquetas['objetivo']} por {fi['unidad']} · {S.titulo_seleccion(sel, dp)}",
-                      height=380, showlegend=len(sel) > 1)
+                      height=380, showlegend=True)
     E.grafico(fig, key="fig_total")
 
 if not plan.viable:
