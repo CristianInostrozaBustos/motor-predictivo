@@ -114,7 +114,7 @@ def decidir(entidad: str, pron: pd.DataFrame, freq: str, par: Parametros) -> Dec
     p50 = pron["P50"].to_numpy(float)
     # el punto de reorden cubre la demanda pronosticada mientras llega el pedido (no un promedio)
     rop = _suma(p50, 0, L) + ss
-    meta = _suma(p50, 0, L + P) + ss
+    meta = _suma(p50, 0, ciclo(P, L)) + ss
 
     I = par.inventario_actual
     if I is None or np.isnan(I):
@@ -125,7 +125,7 @@ def decidir(entidad: str, pron: pd.DataFrame, freq: str, par: Parametros) -> Dec
     # fecha y cantidad del próximo pedido: salen de la misma simulación que se grafica, para que la tabla,
     # el texto y el gráfico digan lo mismo (el punto de reorden de ese día se recalcula con la demanda de entonces)
     from .escenarios import simular as simular_base
-    rop_t, meta_t, _ = politica_dinamica(pron, L, P, z, par.errores)
+    rop_t, meta_t, _, _ = politica_dinamica(pron, L, P, z, par.errores)
     sim = simular_base(pron["fecha"].to_numpy(), p50, I, rop_t, meta_t, L)
     ped = sim.index[sim["pedido"] > 0]
     if len(ped):
@@ -145,20 +145,29 @@ def decidir(entidad: str, pron: pd.DataFrame, freq: str, par: Parametros) -> Dec
                     par.errores, sigma_lt)
 
 
+MARGEN_CICLO = 1.2
+
+
+def ciclo(P: float, L: float) -> float:
+    """Períodos que cubre cada pedido: lo elegido, pero al menos el lead time + 20%. Así hay un solo pedido en
+    camino y, al llegar, la bodega queda sobre el punto de reorden."""
+    return max(P, MARGEN_CICLO * L)
+
+
 def politica_dinamica(pron: pd.DataFrame, L, P: float, z: float, errores=None):
     """ROP, meta y SS recalculados en cada período con el pronóstico de los períodos que vienen.
 
     L puede ser un escalar o un arreglo (lead time en períodos del pedido emitido en cada período).
-    Devuelve tres arreglos del largo del pronóstico.
+    Devuelve ROP, objetivo de la posición al pedir, SS y T (nivel de la bodega al llegar el pedido).
     """
     n = len(pron)
     L = np.broadcast_to(np.asarray(L, float), (n,))
     p50 = pron["P50"].to_numpy(float)
     sig = ((pron["P90"] - pron["P10"]).to_numpy(float) / (2 * Z_P10_P90)).clip(min=0)
-    rop, meta, ss = np.zeros(n), np.zeros(n), np.zeros(n)
+    rop, nivel, ss = np.zeros(n), np.zeros(n), np.zeros(n)
     acum = {}
     for t in range(n):
-        # en el período t la demanda de t ya ocurrió: se cubre desde t+1 hasta que llegue el pedido
+        # en el período t la demanda de t ya ocurrió: se cubre desde t+1
         w = max(1, int(np.ceil(L[t] + P)))
         sl = slice(min(t + 1, n - 1), min(n, t + 1 + w))
         sg = sig[sl].mean()
@@ -167,8 +176,13 @@ def politica_dinamica(pron: pd.DataFrame, L, P: float, z: float, errores=None):
             acum[clave] = sigma_acumulado(errores, L[t])
         ss[t] = z * max(sg * np.sqrt(L[t]), acum[clave])
         rop[t] = _suma(p50, t + 1, L[t]) + ss[t]
-        meta[t] = _suma(p50, t + 1, L[t] + P) + ss[t]
-    return rop, meta, ss
+        # T: nivel de la bodega al llegar un pedido; cubre un ciclo (al menos el lead time, para que haya
+        # un solo pedido en camino y la bodega vuelva sobre el ROP después de cada llegada)
+        nivel[t] = _suma(p50, t + 1, ciclo(P, L[t])) + ss[t]
+    # objetivo de la posición al pedir: lo que se venderá mientras llega + el nivel T al momento de la llegada
+    meta_pos = np.array([_suma(p50, t + 1, L[t]) + nivel[min(n - 1, t + max(1, int(np.ceil(L[t]))))]
+                         for t in range(n)])
+    return rop, meta_pos, ss, nivel
 
 
 def simular(pron: pd.DataFrame, dec: Decision, manuales: dict | None = None, auto_desde: int = 0) -> pd.DataFrame:
@@ -180,10 +194,11 @@ def simular(pron: pd.DataFrame, dec: Decision, manuales: dict | None = None, aut
     if dec.inventario is None:
         return pd.DataFrame()
     from .escenarios import simular as simular_base
-    rop, meta, ss = politica_dinamica(pron, dec.L, dec.P, dec.z, dec.errores)
-    sim = simular_base(pron["fecha"].to_numpy(), pron["P50"].to_numpy(), dec.inventario, rop, meta, dec.L,
+    rop, meta_pos, ss, nivel = politica_dinamica(pron, dec.L, dec.P, dec.z, dec.errores)
+    sim = simular_base(pron["fecha"].to_numpy(), pron["P50"].to_numpy(), dec.inventario, rop, meta_pos, dec.L,
                        manuales=manuales, auto_desde=auto_desde)
     sim["ss"] = ss
+    sim["meta"] = nivel
     return sim
 
 

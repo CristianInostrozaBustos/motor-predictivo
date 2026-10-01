@@ -211,8 +211,8 @@ def comparar(entidad, pron_base, pron_esc_modelo, par: Parametros, esc: Escenari
     k = int(np.ceil(lt_esc.max())) + 1
     lt_plan = _anticipar(lt_esc, k)
 
-    rop_b, meta_b, ss_b = politica_dinamica(pron_base, lt_base, P_per, z, par.errores)
-    rop_e, meta_e, ss_e = politica_dinamica(pron_esc, lt_plan, P_per, z, par.errores)
+    rop_b, meta_b, ss_b, _ = politica_dinamica(pron_base, lt_base, P_per, z, par.errores)
+    rop_e, meta_e, ss_e, _ = politica_dinamica(pron_esc, lt_plan, P_per, z, par.errores)
     difiere = np.where(np.abs(rop_e - rop_b) > 0.01 * np.maximum(rop_b, 1e-9))[0]
     inicio_ajuste = int(difiere[0]) if len(difiere) else esc.desde
 

@@ -57,8 +57,9 @@ with st.container(border=True):
     nivel = c1.select_slider("Nivel de servicio", list(P.Z_NIVEL), value=(guardada or {}).get("nivel", "90%"),
                              help="Probabilidad de no quedarse sin stock mientras llega un pedido. Más alto = más stock de seguridad.")
     rev_def = {"D": 30, "W": 28, "M": 30, "Q": 91}[dp.config.frecuencia]
-    revision = c2.number_input("Cada cuántos días revisas y pides", 1, 365, int((guardada or {}).get("revision", rev_def)),
-                               help="Período de revisión (P) de la política.")
+    revision = c2.number_input("Días que cubre cada pedido", 1, 365, int((guardada or {}).get("revision", rev_def)),
+                               help="Cada pedido alcanza para este período. Como mínimo se usa el lead time + 20%, "
+                                    "para que llegue un pedido antes de necesitar el siguiente.")
     with st.expander("Lead time e inventario por " + S.nombre_entidad(dp), expanded=bool(falta), icon=":material/edit:"):
         if falta:
             st.caption(":material/info: Tu archivo no trae " + " ni ".join(falta) + ". Complétalos aquí para obtener las decisiones.")
@@ -197,8 +198,6 @@ def fig_automatico(sim):
                              line=dict(color=E.AZUL, width=2.4), hovertemplate="%{y:,.0f}"))
     fig.add_trace(go.Scatter(x=sim["fecha"], y=sim["ss"], name="Stock de seguridad (SS)", mode="lines",
                              line=dict(color=E.ROJO, dash="dot", width=1.4), hovertemplate="%{y:,.0f}"))
-    fig.add_trace(go.Scatter(x=sim["fecha"], y=sim["posicion"], name="Bodega + pedidos en camino", mode="lines",
-                             line=dict(color=E.AZUL, width=1.3, dash="dot"), opacity=0.6, hovertemplate="%{y:,.0f}"))
     fig.add_trace(go.Scatter(x=sim["fecha"], y=sim["rop"], name="Punto de reorden (ROP)", mode="lines",
                              line=dict(color=E.NARANJO, dash="dash", width=1.4), hovertemplate="%{y:,.0f}"))
     fig.add_trace(go.Scatter(x=sim["fecha"], y=sim["meta"], name="Meta (T)", mode="lines",
@@ -261,8 +260,8 @@ if modo == "Automático":
         E.nota(f"🟢 <b>No necesitas pedir.</b> El inventario alcanza para los {E.num(len(pr) * dias_p)} días analizados.")
     with st.container(border=True):
         E.grafico(fig_automatico(sim_sug), key="fig_inv")
-        st.caption("La bodega debe mantenerse sobre el stock de seguridad. El punto de reorden se compara con la "
-                   "bodega más los pedidos en camino: cuando esa línea punteada azul lo toca, se pide.")
+        st.caption("Cuando la bodega toca el punto de reorden (ROP) se hace el pedido. Mientras llega, la bodega "
+                   "baja hasta cerca del stock de seguridad (SS); al llegar, sube hasta la meta (T).")
 else:
     # ------------------------------------------------------------ tú decides
     precio = S.precio(ent)
