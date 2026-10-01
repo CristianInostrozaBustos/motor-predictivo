@@ -106,7 +106,6 @@ else:
                                 f"Promedio por {fi['unidad']}": fmt(f["P50"].mean()),
                                 f"Vs. últimos {H} {fi['unidad_pl']}": E.pct(v_e) if v_e is not None else "—",
                                 "Rango probable (P10–P90)": f"{fmt(f['P10'].sum())} – {fmt(f['P90'].sum())}"})
-            st.dataframe(pd.DataFrame(filas_r), hide_index=True, width="stretch")
 
         atras = min(len(hist), max(3 * H, {"D": 120, "W": 52, "M": 36, "Q": 12}[dp.config.frecuencia]))
         desde = hist["fecha"].iloc[-atras]
@@ -141,6 +140,8 @@ else:
         else:
             st.caption("El pronóstico (azul) es el valor más probable. En 8 de cada 10 períodos la realidad debería "
                        "caer dentro de la banda." + (" Supone que " + " y ".join(supuestos) + "." if supuestos else ""))
+        if comparar:
+            st.dataframe(pd.DataFrame(filas_r), hide_index=True, width="stretch")
 
     elif vista == "Tabla":
         tabla = pd.concat([fut_v[e].assign(entidad=e) for e in sel])
