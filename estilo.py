@@ -147,7 +147,9 @@ section[data-testid="stSidebar"] { background: #ffffff; border-right: 1px solid 
 section[data-testid="stSidebar"] .marca { padding: 4px 0 10px 0; }
 
 /* Menú lateral hecho a mano */
-section[data-testid="stSidebar"] .seccion-menu { font-size: .86rem; font-weight: 600; color: #3d3c39; margin: 12px 0 4px 8px; }
+section[data-testid="stSidebar"] .seccion-menu { font-size: .86rem; font-weight: 600; color: #3d3c39; margin: 14px 0 0 8px;
+  padding-bottom: 2px; line-height: 1.2; }
+section[data-testid="stSidebar"] [data-testid="stMarkdownContainer"]:has(> .seccion-menu) { margin-bottom: 0; }
 section[data-testid="stSidebar"] { width: 340px !important; min-width: 340px !important; }
 section[data-testid="stSidebar"] .titulo-controles { font-size: .78rem; font-weight: 700; letter-spacing: .08em;
   text-transform: uppercase; color: #2a78d6; margin: 6px 0 2px 2px; padding-top: 12px;
