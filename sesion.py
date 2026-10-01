@@ -75,18 +75,31 @@ def _config_almacen():
         return None
 
 
+def _huella_config():
+    """La configuración entra en la clave del caché: si cambian los secrets, se crea la conexión nueva."""
+    return tuple(sorted((k, str(v)) for k, v in (_config_almacen() or {}).items()))
+
+
 @st.cache_resource(show_spinner=False)
+def _crear_almacen(huella):
+    from motor import almacen as A
+    return A.crear(dict(huella) if huella else None)
+
+
+@st.cache_resource(show_spinner=False)
+def _crear_repositorio(huella):
+    from motor import repositorio as Rp
+    return Rp.crear(dict(huella) if huella else None)
+
+
 def almacen_persistente():
     """Dónde se guardan modelos y archivos: Supabase Storage si hay secrets, si no una carpeta local."""
-    from motor import almacen as A
-    return A.crear(_config_almacen())
+    return _crear_almacen(_huella_config())
 
 
-@st.cache_resource(show_spinner=False)
 def repositorio():
     """Registro de Mis pronósticos: Supabase Postgres si hay secrets, si no SQLite local."""
-    from motor import repositorio as Rp
-    return Rp.crear(_config_almacen())
+    return _crear_repositorio(_huella_config())
 
 
 MAX_MODELOS_EN_MEMORIA = 4

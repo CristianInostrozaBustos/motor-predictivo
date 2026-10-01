@@ -13,6 +13,36 @@ S.panel_dataset()
 E.encabezado("Modo desarrollador", "Detalles técnicos",
              "Lo que el sistema decidió y midió por dentro. Esta página no aparece para los usuarios.")
 
+# ---------------------------------------------------------------- almacenamiento (siempre visible)
+st.markdown("## Dónde se guarda todo")
+cfg = S._config_almacen()
+if cfg is None:
+    st.warning("No se encontró la sección **[almacen]** en los secrets: se usa la carpeta local, que se borra cuando "
+               "la app se reinicia o se duerme.", icon=":material/cloud_off:")
+else:
+    faltan = [k for k in ("tipo", "url", "key") if not cfg.get(k)]
+    clave = str(cfg.get("key", ""))
+    tipo_clave = ("service_role antigua (eyJ…)" if clave.startswith("eyJ") else
+                  "secret nueva (sb_secret_…)" if clave.startswith("sb_secret_") else
+                  "publishable (sb_publishable_…): NO sirve, usa la secret" if clave.startswith("sb_publishable_") else
+                  "formato no reconocido")
+    st.caption(f"Sección [almacen] encontrada · tipo = `{cfg.get('tipo')}` · url = `{cfg.get('url')}` · "
+               f"bucket = `{cfg.get('bucket', 'motor')}` · clave: {tipo_clave}"
+               + (f" · faltan: {', '.join(faltan)}" if faltan else ""))
+    if cfg.get("tipo") != "supabase":
+        st.warning('En [almacen] debe decir `tipo = "supabase"` (con comillas).', icon=":material/warning:")
+alm = S.almacen_persistente()
+st.caption(f"Archivos: **{alm.nombre}** · Registro de usuarios: **{S.repositorio().nombre}**.")
+try:
+    lista = alm.listar()
+    if lista:
+        st.dataframe(pd.DataFrame(lista), width="stretch", hide_index=True)
+    else:
+        st.caption("Todavía no hay modelos guardados.")
+except Exception as e:  # noqa: BLE001
+    st.error(f"No se pudo conectar con el almacenamiento: {e}")
+st.caption(f"Origen del modelo actual: {st.session_state.get('resultado', {}).get('origen', '—')}")
+
 dp = st.session_state.get("dp")
 if dp is None:
     st.info("Carga un dataset primero.")
@@ -65,13 +95,3 @@ if h:
 st.markdown("## Indicadores disponibles")
 st.dataframe(R.tabla_indicadores(R.indicadores(dp)), width="stretch", hide_index=True)
 
-st.markdown("## Modelos guardados")
-alm = S.almacen_persistente()
-st.caption(f"Archivos: {alm.nombre} · Registro de usuarios: {S.repositorio().nombre}. "
-           "Configurable en los secrets del sitio (sección [almacen]).")
-try:
-    lista = alm.listar()
-    st.dataframe(pd.DataFrame(lista), width="stretch", hide_index=True) if lista else st.caption("Todavía no hay modelos guardados.")
-except Exception as e:  # noqa: BLE001
-    st.error(f"No se pudo listar: {e}")
-st.caption(f"Origen del modelo actual: {st.session_state.get('resultado', {}).get('origen', '—')}")
