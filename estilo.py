@@ -147,7 +147,19 @@ section[data-testid="stSidebar"] { background: #ffffff; border-right: 1px solid 
 section[data-testid="stSidebar"] .marca { padding: 4px 0 10px 0; }
 
 /* Menú lateral hecho a mano */
-section[data-testid="stSidebar"] .seccion-menu { font-size: .86rem; font-weight: 600; color: #3d3c39; margin: 18px 0 6px 8px; }
+section[data-testid="stSidebar"] .seccion-menu { font-size: .86rem; font-weight: 600; color: #3d3c39; margin: 12px 0 4px 8px; }
+section[data-testid="stSidebar"] { width: 340px !important; min-width: 340px !important; }
+section[data-testid="stSidebar"] .titulo-controles { font-size: .78rem; font-weight: 700; letter-spacing: .08em;
+  text-transform: uppercase; color: #2a78d6; margin: 6px 0 2px 2px; padding-top: 12px;
+  border-top: 1px solid rgba(11,11,11,0.08); }
+.titulo-compacto { margin: 0 0 .6rem 0; }
+section[data-testid="stSidebar"] [class*="st-key-vistas_"] { margin: 2px 0 6px 14px; padding-left: 10px;
+  border-left: 2px solid rgba(42,120,214,0.35); }
+section[data-testid="stSidebar"] [class*="st-key-vistas_"] label p { font-size: .88rem; }
+[class*="st-key-panel_control"] { background: #ffffff; }
+.titulo-compacto .eyebrow { font-size: .72rem; font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
+  color: #2a78d6; }
+.titulo-compacto h2 { font-size: 1.65rem; font-weight: 750; margin: 0; padding: 0; line-height: 1.2; }
 section[data-testid="stSidebar"] [data-testid="stPageLink"] a { padding: 5px 8px; border-radius: 8px; }
 section[data-testid="stSidebar"] [data-testid="stSidebarUserContent"] { padding-top: 0.5rem; }
 section[data-testid="stSidebar"] [data-testid="stVerticalBlock"] { gap: 0.35rem; }
@@ -217,6 +229,16 @@ def aplicar_estilo():
 
 
 # ---------------------------------------------------------------- componentes
+
+def titulo_compacto(eyebrow, titulo):
+    """Encabezado de una línea para páginas tipo dashboard."""
+    st.markdown(f'<div class="titulo-compacto"><div class="eyebrow">{eyebrow}</div><h2>{titulo}</h2></div>',
+                unsafe_allow_html=True)
+
+
+def titulo_controles(texto="Controles"):
+    st.markdown(f'<div class="titulo-controles">{texto}</div>', unsafe_allow_html=True)
+
 
 def encabezado(eyebrow, titulo, descripcion=""):
     st.markdown(

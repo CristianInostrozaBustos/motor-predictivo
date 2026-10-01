@@ -46,12 +46,8 @@ def costo_alternativo_detectado(e):
                 return float(v.iloc[-1])
     return None
 
-E.encabezado(
-    "Paso 5",
-    "Escenarios: ¿qué pasa si…?",
-    "Simula un evento y mira cómo cambia la demanda, qué le pasa a tu inventario si no reaccionas "
-    "y qué tendrías que cambiar para evitar quedarte sin stock.",
-)
+vista_pag = S.vista("escenarios")
+E.titulo_compacto("Paso 5 · Escenarios: ¿qué pasa si…?", vista_pag)
 
 import cuenta  # noqa: E402
 
@@ -111,14 +107,15 @@ primera_fecha = res.series[entidades[0]].fechas[-1] + pd.tseries.frequencies.to_
 dur_def = {"D": 30, "W": 6, "M": 3, "Q": 2}[freq]
 dur_max = max(1, min(res.plan.horizonte_max - 1, {"D": 120, "W": 26, "M": 12, "Q": 4}[freq]))
 
-with st.container(border=True):
+with st.container(border=True, key="panel_control_esc"):
     st.markdown("**¿Qué ocurre?** · puedes combinar varios eventos")
     tipos = st.pills("Eventos", disponibles, format_func=lambda t: X.TIPOS[t], selection_mode="multi",
                      default=["retraso"], label_visibility="collapsed", key="esc_tipos")
     eventos = []
+    n_ev = len(tipos or [])
+    fila = st.columns(n_ev + 2 if n_ev <= 2 else n_ev, gap="medium")
     if tipos:
-        cols = st.columns(len(tipos))
-        for col, t in zip(cols, tipos):
+        for col, t in zip(fila, tipos):
             with col:
                 if t == "demanda":
                     v = st.slider("Cambio en la demanda (%)", -60, 150, 25, 5, key="esc_dem",
@@ -165,10 +162,12 @@ with st.container(border=True):
                     v = st.slider("Cambio (%)", -60, 150, 30, 5, key="esc_exo")
                     eventos.append(X.Evento("exogena", v / 100, var))
 
-    st.markdown("**¿Cuándo y a quién?**")
+    if n_ev <= 2:
+        c2, c3 = fila[-2], fila[-1]
+    else:
+        c2, c3, _ = st.columns([1, 1, 2], gap="medium")
     alcance = S.elegir_uno("Afecta a", (["Todas"] if len(entidades) > 1 else []) + entidades, key="alc",
                            estado="esc_alcance", formato=lambda x: "Todos" if x == "Todas" else x)
-    c2, c3 = st.columns(2)
     adelanto = {"D": pd.Timedelta(days=14), "W": pd.Timedelta(weeks=2), "M": pd.DateOffset(months=1), "Q": pd.DateOffset(months=3)}[freq]
     # el retraso solo se nota si el evento incluye un pedido: se sugiere empezar en el próximo pedido
     ref_ent = alcance if alcance != "Todas" else None
@@ -178,8 +177,8 @@ with st.container(border=True):
         inicio_def = prox.date()
     fecha_ini = c2.date_input("Empieza", inicio_def, min_value=primera_fecha.date(), format="DD/MM/YYYY", key="esc_ini")
     if prox is not None:
-        c2.caption(f"Próximo pedido{' de ' + ref_ent if ref_ent else ''}: **{prox:%d/%m/%Y}**. "
-                   "Un retraso solo se nota si el evento incluye un pedido.")
+        c2.caption(f"Próximo pedido{' de ' + ref_ent if ref_ent else ''}: **{prox:%d/%m/%Y}**.",
+                   help="Un retraso solo se nota si el evento incluye un pedido.")
     duracion = c3.slider(f"Dura ({u_pl})", 1, dur_max, min(dur_def, dur_max), key="esc_dur")
     simular = st.button("Simular escenario", type="primary", icon=":material/play_arrow:", disabled=not eventos)
 
@@ -227,14 +226,14 @@ descripcion = " + ".join(
      "precio": f"precio {ev.valor:+.0%}", "promocion": "promoción",
      "exogena": f"{dp.etiquetas.get(ev.var, ev.var)} {ev.valor:+.0%}"}[ev.tipo].replace(".", ",")
     for ev in esc.eventos)
-st.markdown(f"## Resultado · {descripcion}")
+st.markdown(f"### Resultado · {descripcion}")
 st.caption(f"Del {f_ini:%d/%m/%Y} al {f_fin:%d/%m/%Y} · "
            + (f"todas las {S.nombre_entidad(dp, True)}" if len(afectadas) > 1 else afectadas[0])
            + f" · análisis sobre {H_an} {u_pl} · nivel de servicio {nivel}")
 
 if not hay_inv:
-    E.nota("Para simular el inventario necesitas el inventario actual. Complétalo en <b>3. Decisiones</b> "
-           "(sección Lead time e inventario) y vuelve aquí. Mientras tanto ves el efecto en la demanda y en la política.")
+    E.nota("Para simular el inventario necesitas el inventario actual. Complétalo en el panel de "
+           "<b>3. Decisiones</b> y vuelve aquí. Mientras tanto ves el efecto en la demanda y en la política.")
 
 # ---------------------------------------------------------------- resumen de todas
 if len(afectadas) > 1:
@@ -254,13 +253,6 @@ if len(afectadas) > 1:
                if S.precio(e) else {}),
         })
     tabla = pd.DataFrame(filas)
-    st.dataframe(tabla.sort_values(f"{u_pl.capitalize()} extra sin stock, sin ajustar", ascending=False) if hay_inv else tabla,
-                 width="stretch", hide_index=True, column_config={
-                     "Demanda en el evento": st.column_config.NumberColumn(format="%+.1f%%"),
-                     **{c: st.column_config.NumberColumn(format="%.0f") for c in tabla.columns[2:]},
-                 })
-    st.write("")
-    st.markdown(f"### Detalle por {S.nombre_entidad(dp)}")
     ent = S.selector_entidad(afectadas, dp, key="esc")
 else:
     ent = afectadas[0]
@@ -269,22 +261,23 @@ else:
 c = comps[ent]
 r = c.resumen
 d0, d1 = r["demanda_base_evento"], r["demanda_esc_evento"]
-m1, m2, m3, m4 = st.columns(4)
-var_d = (d1 / d0 - 1) * 100 if d0 else 0
-m1.metric("Demanda durante el evento", E.num(d1), delta=f"{E.pct(var_d)} vs. sin evento" if abs(var_d) >= 0.05 else None,
-          delta_color="off")
-rop_b, rop_e = r["rop_base"], r["rop_esc"]
-m2.metric("Nuevo punto de reorden", E.num(rop_e), delta=f"antes {E.num(rop_b)}", delta_color="off", delta_arrow="off",
-          help="Al inicio del evento. La política se recalcula cada período con el pronóstico.")
-m3.metric("Nuevo stock de seguridad", E.num(r["ss_esc"]), delta=f"antes {E.num(r['ss_base'])}",
-          delta_color="off", delta_arrow="off")
-if hay_inv:
-    q = r["quiebre_extra_sin"]
-    m4.metric(f"{u_pl.capitalize()} sin stock por el evento", q,
-              delta=f"{r['quiebre_extra_aj']} ajustando a tiempo", delta_color="off", delta_arrow="off",
-              help="Días (o períodos) sin stock que agrega el evento, por sobre los que ya ocurrirían sin él.")
+if vista_pag != "Impacto en dinero":
+    m1, m2, m3, m4 = st.columns(4)
+    var_d = (d1 / d0 - 1) * 100 if d0 else 0
+    m1.metric("Demanda durante el evento", E.num(d1), delta=f"{E.pct(var_d)} vs. sin evento" if abs(var_d) >= 0.05 else None,
+              delta_color="off")
+    rop_b, rop_e = r["rop_base"], r["rop_esc"]
+    m2.metric("Nuevo punto de reorden", E.num(rop_e), delta=f"antes {E.num(rop_b)}", delta_color="off", delta_arrow="off",
+              help="Al inicio del evento. La política se recalcula cada período con el pronóstico.")
+    m3.metric("Nuevo stock de seguridad", E.num(r["ss_esc"]), delta=f"antes {E.num(r['ss_base'])}",
+              delta_color="off", delta_arrow="off")
+    if hay_inv:
+        q = r["quiebre_extra_sin"]
+        m4.metric(f"{u_pl.capitalize()} sin stock por el evento", q,
+                  delta=f"{r['quiebre_extra_aj']} ajustando a tiempo", delta_color="off", delta_arrow="off",
+                  help="Días (o períodos) sin stock que agrega el evento, por sobre los que ya ocurrirían sin él.")
 
-if hay_inv:
+if hay_inv and vista_pag == "Inventario":
     f_aj = c.base["fecha"].iloc[c.inicio_ajuste]
     qs, qa = r["quiebre_extra_sin"], r["quiebre_extra_aj"]
     if qs > 0:
@@ -313,7 +306,6 @@ if hay_inv:
         texto = (f"El inventario de <b>{ent}</b> aguanta este escenario sin quiebres. Durante el evento el punto de "
                  f"reorden recomendado es <b>{E.num(rop_e)}</b> (sin el evento sería {E.num(rop_b)}).")
     E.nota(texto)
-st.write("")
 
 x0, x1 = f_ini, f_fin + pd.tseries.frequencies.to_offset(FRECUENCIAS[freq]["pandas"])
 
@@ -323,8 +315,7 @@ def sombrear(fig):
                   annotation_position="top left", annotation_font_color=E.TINTA_2)
 
 
-col_a, col_b = st.columns(2, gap="medium")
-with col_a.container(border=True):
+if vista_pag == "Demanda":
     fig = E.fig_banda(c.escenario["fecha"], c.escenario["P10"], c.escenario["P50"], c.escenario["P90"],
                       nombre_banda="Rango con el evento", nombre_p50="Con el evento")
     fig.add_trace(go.Scatter(x=c.base["fecha"], y=c.base["P50"], name="Sin el evento", mode="lines",
@@ -340,7 +331,7 @@ with col_a.container(border=True):
                                       separatethousands=True, range=rng, title=dict(text="Precio ($)"),
                                       tickfont=dict(color=E.AQUA), zeroline=False))
     sombrear(fig)
-    fig.update_layout(title=f"Demanda pronosticada · {ent}", yaxis_title=dp.etiquetas["objetivo"], height=420,
+    fig.update_layout(title=f"Demanda pronosticada · {ent}", yaxis_title=dp.etiquetas["objetivo"], height=460,
                       margin=dict(t=110))
     E.grafico(fig, key="fig_esc_dem")
     ev_precio = [ev for ev in esc.eventos if ev.tipo == "precio"]
@@ -354,38 +345,37 @@ with col_a.container(border=True):
     if otros_modelo:
         st.caption("El efecto de la promoción u otras variables lo calcula el modelo con lo que aprendió de tu historial.")
 
-if hay_inv:
-    with col_b.container(border=True):
-        fig = go.Figure()
-        if r.get("inventario_igual"):
-            fig.add_trace(go.Scatter(x=c.sim_base["fecha"], y=c.sim_base["inventario"], mode="lines",
-                                     name="Inventario (igual con y sin el evento)", line=dict(color=E.AZUL, width=2.2),
-                                     hovertemplate="%{y:,.0f}"))
-        else:
-            fig.add_trace(go.Scatter(x=c.sim_base["fecha"], y=c.sim_base["inventario"], name="Sin el evento", mode="lines",
-                                     line=dict(color=E.TINTA_MUTED, width=1.4, dash="dot"), hovertemplate="%{y:,.0f}"))
-            fig.add_trace(go.Scatter(x=c.sim_sin_ajuste["fecha"], y=c.sim_sin_ajuste["inventario"], mode="lines",
-                                     name="Con el evento, sin ajustar", line=dict(color=E.NARANJO, width=2.2),
-                                     hovertemplate="%{y:,.0f}"))
-            fig.add_trace(go.Scatter(x=c.sim_ajustada["fecha"], y=c.sim_ajustada["inventario"], mode="lines",
-                                     name="Con el evento, ajustando", line=dict(color=E.AZUL, width=2.2),
-                                     hovertemplate="%{y:,.0f}"))
-        if c.sim_alternativo is not None and not r.get("inventario_igual"):
-            fig.add_trace(go.Scatter(x=c.sim_alternativo["fecha"], y=c.sim_alternativo["inventario"], mode="lines",
-                                     name="Proveedor alternativo", line=dict(color=E.VERDE, width=1.8, dash="dash"),
-                                     hovertemplate="%{y:,.0f}"))
-        qb = c.sim_sin_ajuste[c.sim_sin_ajuste["quiebre"]]
-        if len(qb):
-            fig.add_trace(go.Scatter(x=qb["fecha"], y=qb["inventario"], mode="markers", name="Sin stock",
-                                     marker=dict(color=E.ROJO, size=8, symbol="x"),
-                                     customdata=qb["no_atendida"], hovertemplate="faltan %{customdata:,.0f} u."))
-        sombrear(fig)
-        fig.update_layout(title=f"Inventario proyectado · {ent}", yaxis_title="Unidades", height=420,
-                          margin=dict(t=110))
-        E.grafico(fig, key="fig_esc_inv")
-        st.caption("Simulación con venta perdida: cuando el inventario llega a cero, la demanda de ese día no se atiende.")
-else:
-    with col_b.container(border=True):
+if vista_pag == "Inventario" and hay_inv:
+    fig = go.Figure()
+    if r.get("inventario_igual"):
+        fig.add_trace(go.Scatter(x=c.sim_base["fecha"], y=c.sim_base["inventario"], mode="lines",
+                                 name="Inventario (igual con y sin el evento)", line=dict(color=E.AZUL, width=2.2),
+                                 hovertemplate="%{y:,.0f}"))
+    else:
+        fig.add_trace(go.Scatter(x=c.sim_base["fecha"], y=c.sim_base["inventario"], name="Sin el evento", mode="lines",
+                                 line=dict(color=E.TINTA_MUTED, width=1.4, dash="dot"), hovertemplate="%{y:,.0f}"))
+        fig.add_trace(go.Scatter(x=c.sim_sin_ajuste["fecha"], y=c.sim_sin_ajuste["inventario"], mode="lines",
+                                 name="Con el evento, sin ajustar", line=dict(color=E.NARANJO, width=2.2),
+                                 hovertemplate="%{y:,.0f}"))
+        fig.add_trace(go.Scatter(x=c.sim_ajustada["fecha"], y=c.sim_ajustada["inventario"], mode="lines",
+                                 name="Con el evento, ajustando", line=dict(color=E.AZUL, width=2.2),
+                                 hovertemplate="%{y:,.0f}"))
+    if c.sim_alternativo is not None and not r.get("inventario_igual"):
+        fig.add_trace(go.Scatter(x=c.sim_alternativo["fecha"], y=c.sim_alternativo["inventario"], mode="lines",
+                                 name="Proveedor alternativo", line=dict(color=E.VERDE, width=1.8, dash="dash"),
+                                 hovertemplate="%{y:,.0f}"))
+    qb = c.sim_sin_ajuste[c.sim_sin_ajuste["quiebre"]]
+    if len(qb):
+        fig.add_trace(go.Scatter(x=qb["fecha"], y=qb["inventario"], mode="markers", name="Sin stock",
+                                 marker=dict(color=E.ROJO, size=8, symbol="x"),
+                                 customdata=qb["no_atendida"], hovertemplate="faltan %{customdata:,.0f} u."))
+    sombrear(fig)
+    fig.update_layout(title=f"Inventario proyectado · {ent}", yaxis_title="Unidades", height=460,
+                      margin=dict(t=110))
+    E.grafico(fig, key="fig_esc_inv")
+    st.caption("Simulación con venta perdida: cuando el inventario llega a cero, la demanda de ese día no se atiende.")
+elif vista_pag == "Inventario":
+    with st.container(border=True):
         st.markdown("**Política durante el evento**")
         t = pd.DataFrame({
             "": ["Stock de seguridad", "Punto de reorden", "Meta (T)", "Lead time (días)"],
@@ -395,12 +385,21 @@ else:
         st.dataframe(t, hide_index=True, width="stretch",
                      column_config={k: st.column_config.NumberColumn(format="%.0f") for k in ("Actual", "Con el evento")})
 
+if vista_pag == "Inventario" and len(afectadas) > 1:
+    st.markdown(f"#### Todos los {S.nombre_entidad(dp, True)} afectados")
+    st.dataframe(tabla.sort_values(f"{u_pl.capitalize()} extra sin stock, sin ajustar", ascending=False) if hay_inv else tabla,
+                 width="stretch", hide_index=True, column_config={
+                     "Demanda en el evento": st.column_config.NumberColumn(format="%+.1f%%"),
+                     **{c: st.column_config.NumberColumn(format="%.0f") for c in tabla.columns[2:]},
+                 })
+
 # ---------------------------------------------------------------- impacto en dinero
 # requiere precio (del archivo o asignado en Finanzas)
 din = None
-if S.precio(ent):
-    st.write("")
-    st.markdown(f"### Impacto en dinero · {ent}")
+if vista_pag == "Impacto en dinero" and not S.precio(ent):
+    E.nota(f"Para ver el impacto en dinero, asigna el precio de venta de <b>{ent}</b> en "
+           "<b>4. Finanzas → Precio y costo</b>.")
+if vista_pag == "Impacto en dinero" and S.precio(ent):
     precio_arch = S.precio(ent)
     costo_arch = S.costo_compra(ent)
     with st.popover("Precio y costo usados", icon=":material/tune:"):
@@ -450,7 +449,7 @@ if S.precio(ent):
         else:
             k4.metric("Margen", "—", help="Ingresa el costo por unidad en «Precio y costo usados» para ver el margen.")
 
-            frases = []
+        frases = []
         if abs(cp) > 1e-9:
             dd = (r["demanda_esc_evento"] / r["demanda_base_evento"] - 1) * 100 if r["demanda_base_evento"] else 0
             ref_precio = aj if aj is not None else sa   # efecto del precio sin mezclarlo con los quiebres
@@ -532,6 +531,7 @@ det["fecha"] = det["fecha"].dt.date
 if din is not None:
     hojas["Impacto en dinero"] = vista.rename(columns={"": "Mundo"}).round(0)
 hojas[f"Detalle {ent}"[:31]] = det.rename(columns={"fecha": "Fecha"}).round(1)
-st.download_button("Descargar escenario (Excel)", E.excel_bytes(hojas), file_name="escenario.xlsx",
-                   icon=":material/download:",
-                   mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+with st.container(horizontal=True, horizontal_alignment="right"):
+    st.download_button("Descargar escenario (Excel)", E.excel_bytes(hojas), file_name="escenario.xlsx",
+                       icon=":material/download:", type="tertiary",
+                       mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")

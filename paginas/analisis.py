@@ -19,20 +19,9 @@ nom = S.mayus(S.nombre_entidad(dp))
 n_ent = dp.df["entidad"].nunique()
 df = dp.df
 
-E.encabezado("Explorar", "Explora tus datos", "Elige qué quieres analizar.")
-
-disponibles = ["Estacionalidad"]
-if n_ent > 1:
-    disponibles.append("Ranking ABC")
-if dp.tiene("promocion"):
-    disponibles.append("Efecto de las promociones")
-if dp.tiene("quiebre") or dp.tiene("inventario"):
-    disponibles.append("Quiebres de stock")
-if n_ent > 1:
-    disponibles.append("Variabilidad por " + S.nombre_entidad(dp))
-
-elegidas = st.pills("Análisis", disponibles, selection_mode="multi", default=[disponibles[0]],
-                    label_visibility="collapsed", key="pills_analisis")
+vista = S.vista("analisis")
+E.titulo_compacto("Explorar · Análisis de tus datos", vista)
+elegidas = [vista]
 no_disp = []
 if not dp.tiene("promocion"):
     no_disp.append("efecto de promociones (requiere columna de promoción)")
@@ -49,8 +38,7 @@ def colores(lista):
 
 
 # ---------------------------------------------------------------- estacionalidad
-if "Estacionalidad" in (elegidas or []):
-    st.markdown("## Estacionalidad")
+if "Estacionalidad" in elegidas:
     sel = S.elegir_uno(nom, ents, key="est", estado="est_ent") if n_ent > 1 else ents[0]
     sub = df[df["entidad"] == sel]
     serie = sub.groupby("fecha")["objetivo"].sum()
@@ -83,8 +71,7 @@ if "Estacionalidad" in (elegidas or []):
                ("Meses bajos: <b>" + ", ".join(bajo) + "</b>." if bajo else ""))
 
 # ---------------------------------------------------------------- ABC
-if "Ranking ABC" in (elegidas or []):
-    st.markdown("## Ranking ABC")
+if "Ranking ABC" in elegidas:
     if dp.tiene("precio"):
         valor = (df["objetivo"] * df["precio"]).groupby(df["entidad"]).sum()
         medida = "ingresos"
@@ -112,8 +99,7 @@ if "Ranking ABC" in (elegidas or []):
            f"Clase B: {c.get('B', 0)} · Clase C: {c.get('C', 0)}.")
 
 # ---------------------------------------------------------------- promociones
-if "Efecto de las promociones" in (elegidas or []):
-    st.markdown("## Efecto de las promociones")
+if "Efecto de las promociones" in elegidas:
     g = df.groupby(["entidad", "promocion"])["objetivo"].mean().unstack()
     g = g.rename(columns={0: "sin", 1: "con"}).dropna()
     g["efecto"] = (g["con"] / g["sin"] - 1) * 100
@@ -130,8 +116,7 @@ if "Efecto de las promociones" in (elegidas or []):
         E.grafico(fig, key="fig_promo")
 
 # ---------------------------------------------------------------- quiebres
-if "Quiebres de stock" in (elegidas or []):
-    st.markdown("## Quiebres de stock")
+if "Quiebres de stock" in elegidas:
     q = df["quiebre"] if dp.tiene("quiebre") else (df["inventario"] <= 0).astype(int)
     tasa = q.groupby(df["entidad"]).mean() * 100
     c1, c2 = st.columns([1, 2.4], gap="large")
@@ -146,8 +131,7 @@ if "Quiebres de stock" in (elegidas or []):
         E.grafico(fig, key="fig_quiebre")
 
 # ---------------------------------------------------------------- variabilidad
-if "Variabilidad por " + S.nombre_entidad(dp) in (elegidas or []):
-    st.markdown("## Variabilidad por " + S.nombre_entidad(dp))
+if "Variabilidad" in elegidas:
     v = df.groupby("entidad")["objetivo"].agg(["mean", "std"])
     v["cv"] = v["std"] / v["mean"].replace(0, np.nan)
     with st.container(border=True):

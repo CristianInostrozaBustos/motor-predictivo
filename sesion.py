@@ -197,6 +197,61 @@ def pronostico_escenario(h, cambios, entidades):
                                           cambios_t, tuple(entidades))
 
 
+# ---------------------------------------------------------------- vistas por página (menú lateral)
+VISTAS = {
+    "pronostico": ["Pronóstico", "Tabla", "Precisión", "Prueba con datos pasados"],
+    "decisiones": ["Inventario proyectado", "Tú decides", "Todos los productos", "Detalle técnico"],
+    "finanzas": ["Meta e ingresos", "Comparar productos", "Días fuertes", "Insumos", "Precio y costo"],
+    "escenarios": ["Demanda", "Inventario", "Impacto en dinero"],
+}
+
+
+def opciones_vista(pagina):
+    """Vistas disponibles de una página según el dataset activo."""
+    dp, res = resultado()
+    if dp is None:
+        return []
+    if pagina == "analisis":
+        n = dp.df["entidad"].nunique()
+        ops = ["Estacionalidad"] + (["Ranking ABC"] if n > 1 else [])
+        if dp.tiene("promocion"):
+            ops.append("Efecto de las promociones")
+        if dp.tiene("quiebre") or dp.tiene("inventario"):
+            ops.append("Quiebres de stock")
+        return ops + (["Variabilidad"] if n > 1 else [])
+    if res is None:
+        return []
+    ops = list(VISTAS.get(pagina, []))
+    if dp.df["entidad"].nunique() == 1:
+        ops = [o for o in ops if o not in ("Todos los productos", "Comparar productos")]
+    if pagina == "finanzas" and dp.config.frecuencia != "D":
+        ops = ["Meses fuertes" if o == "Días fuertes" else o for o in ops]
+    return ops
+
+
+def vista(pagina):
+    """Vista elegida en el menú lateral para una página."""
+    opciones = opciones_vista(pagina)
+    v = st.session_state.get(f"vista_{pagina}")
+    return v if v in opciones else (opciones[0] if opciones else None)
+
+
+def menu_vistas(pagina):
+    """Opciones de la página abierta, bajo su enlace del menú. La elección se recuerda al cambiar de página."""
+    opciones = opciones_vista(pagina)
+    if not opciones:
+        return
+    kw, estado = f"_menu_{pagina}", f"vista_{pagina}"
+    st.session_state[estado] = vista(pagina)
+    st.session_state[kw] = st.session_state[estado]
+
+    def _sync():
+        st.session_state[estado] = st.session_state[kw]
+
+    with st.container(key=f"vistas_{pagina}"):
+        st.radio("Qué ver", opciones, key=kw, on_change=_sync, label_visibility="collapsed")
+
+
 # ---------------------------------------------------------------- valores ($) por producto
 # Precio y costo unitario: del archivo o asignados por el usuario. Sin valores se trabaja en unidades.
 
@@ -406,8 +461,19 @@ def selector_entidad(entidades, dp, key="ent"):
     return elegir_uno(mayus(nombre_entidad(dp)), entidades, key=key, estado="entidad")
 
 
-def panel_dataset():
+def panel_dataset(compacto=True):
     dp = st.session_state.get("dp")
+    if compacto:
+        with st.sidebar:
+            if dp is None:
+                st.caption("Todavía no cargas un dataset.")
+                return
+            _, res = resultado()
+            n = dp.df["entidad"].nunique()
+            st.caption(f":material/description: {st.session_state.get('nombre_dataset', 'dataset')} · {n} "
+                       f"{nombre_entidad(dp, n != 1)} · {dp.freq_info['nombre']}"
+                       + (" · pronóstico listo" if res is not None else ""))
+        return
     with st.sidebar:
         st.markdown("##### Tus datos")
         if dp is None:

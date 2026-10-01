@@ -10,18 +10,18 @@ E.aplicar_estilo()
 inicio = st.Page("paginas/inicio.py", title="Inicio", icon=":material/home:", default=True)
 secciones = {
     "Pronosticar": [
-        st.Page("paginas/datos.py", title="1. Tus datos", icon=":material/upload_file:"),
-        st.Page("paginas/pronostico.py", title="2. Pronóstico", icon=":material/show_chart:"),
-        st.Page("paginas/decisiones.py", title="3. Decisiones", icon=":material/inventory_2:"),
-        st.Page("paginas/finanzas.py", title="4. Finanzas", icon=":material/payments:"),
-        st.Page("paginas/escenarios.py", title="5. Escenarios", icon=":material/thunderstorm:"),
+        st.Page("paginas/datos.py", title="1. Tus datos"),
+        st.Page("paginas/pronostico.py", title="2. Pronóstico"),
+        st.Page("paginas/decisiones.py", title="3. Decisiones"),
+        st.Page("paginas/finanzas.py", title="4. Finanzas"),
+        st.Page("paginas/escenarios.py", title="5. Escenarios"),
     ],
-    "Explorar": [st.Page("paginas/analisis.py", title="Análisis de tus datos", icon=":material/insights:")],
+    "Explorar": [st.Page("paginas/analisis.py", title="Análisis de tus datos")],
 }
 if cuenta.login_disponible():
-    secciones["Tu cuenta"] = [st.Page("paginas/mis_pronosticos.py", title="Mis pronósticos", icon=":material/folder_open:")]
+    secciones["Tu cuenta"] = [st.Page("paginas/mis_pronosticos.py", title="Mis pronósticos")]
 if S.modo_dev():
-    secciones["Desarrollador"] = [st.Page("paginas/tecnico.py", title="Detalles técnicos", icon=":material/code:")]
+    secciones["Desarrollador"] = [st.Page("paginas/tecnico.py", title="Detalles técnicos")]
 
 st.logo("favicon.png", size="large")
 # Menú manual: la cuenta va debajo de Inicio
@@ -34,6 +34,9 @@ with st.sidebar:
         st.markdown(f'<div class="seccion-menu">{nombre}</div>', unsafe_allow_html=True)
         for p in ps:
             st.page_link(p)
+            # las vistas de la página abierta se despliegan bajo su enlace (acordeón)
+            if p.url_path == pg.url_path:
+                S.menu_vistas(p.url_path.split("/")[-1])
     st.divider()
 pg.run()
 E.pie_pagina()
