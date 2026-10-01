@@ -58,6 +58,16 @@ def clp(x):
     return f"{signo}${num(abs(x))}"
 
 
+def clp_corto(x):
+    """Montos grandes en corto para tarjetas: $339,0 M · $1.432 M · $85.300."""
+    signo = "−" if x < 0 else ""
+    x = abs(x)
+    if x >= 1e6:
+        m = x / 1e6
+        return f"{signo}${num(m, 1) if m < 100 else num(m)} M"
+    return f"{signo}${num(x)}"
+
+
 def clp_md(x):
     """Monto para textos con Markdown (captions, deltas): el $ se escapa para que no se lea como fórmula."""
     return clp(x).replace("$", "\\$")
@@ -308,19 +318,19 @@ def excel_bytes(hojas):
 
 # ---------------------------------------------------------------- figuras reutilizables
 
-def fig_banda(fechas, p10, p50, p90, nombre_banda="Rango P10–P90", nombre_p50="Pronóstico (P50)"):
+def fig_banda(fechas, p10, p50, p90, nombre_banda="Rango P10–P90", nombre_p50="Pronóstico (P50)", hover="%{y:,.0f} u."):
     """Banda de incertidumbre + línea P50. Devuelve la figura para agregarle más trazas."""
     fig = go.Figure()
     fig.add_trace(go.Scatter(x=fechas, y=p90, mode="lines", line=dict(width=0), hoverinfo="skip", showlegend=False))
     fig.add_trace(go.Scatter(x=fechas, y=p10, mode="lines", line=dict(width=0), fill="tonexty", fillcolor=AZUL_BANDA,
                              name=nombre_banda, hoverinfo="skip"))
     fig.add_trace(go.Scatter(x=fechas, y=p50, mode="lines", name=nombre_p50, line=dict(color=AZUL, width=2.2),
-                             hovertemplate="%{y:,.0f} u."))
+                             hovertemplate=hover))
     # P10/P90 en el tooltip sin dibujar línea
     fig.add_trace(go.Scatter(x=fechas, y=p90, name="P90", mode="lines", line=dict(width=0),
-                             showlegend=False, hovertemplate="%{y:,.0f} u."))
+                             showlegend=False, hovertemplate=hover))
     fig.add_trace(go.Scatter(x=fechas, y=p10, name="P10", mode="lines", line=dict(width=0),
-                             showlegend=False, hovertemplate="%{y:,.0f} u."))
+                             showlegend=False, hovertemplate=hover))
     return fig
 
 

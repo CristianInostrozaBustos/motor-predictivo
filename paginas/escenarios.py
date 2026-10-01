@@ -47,7 +47,7 @@ def costo_alternativo_detectado(e):
     return None
 
 E.encabezado(
-    "Paso 4",
+    "Paso 5",
     "Escenarios: ¿qué pasa si…?",
     "Simula un evento y mira cómo cambia la demanda, qué le pasa a tu inventario si no reaccionas "
     "y qué tendrías que cambiar para evitar quedarte sin stock.",
@@ -128,17 +128,17 @@ with st.container(border=True):
                     v = st.number_input("Días adicionales de retraso", 1, 180, 10, key="esc_ret",
                                         help="Los pedidos que emitas durante el evento llegan con este retraso extra.")
                     c_alt = None
-                    if dp.tiene("costo_unitario"):
+                    if any(S.costo_compra(x) for x in entidades):
                         cubrir = st.toggle("Evaluar cubrirlo con un proveedor alternativo", key="esc_alt",
                                            help="Compara quedarte con el retraso contra comprarle a otro proveedor que "
                                                 "llega a tiempo pero cobra más por unidad.")
                         if cubrir:
                             ref = (st.session_state.get("esc_alcance") if st.session_state.get("esc_alcance") not in
                                    (None, "Todas") else entidades[0])
-                            sug = costo_alternativo_detectado(ref) or (ultimo("costo_unitario", ref) or 0) * 1.3
+                            sug = costo_alternativo_detectado(ref) or (S.costo_compra(ref) or 0) * 1.3
                             c_alt = st.number_input("Costo por unidad del proveedor alternativo ($)", 0.0, None,
                                                     float(round(sug)), 50.0, format="%.0f", key="esc_alt_costo",
-                                                    help=f"Hoy pagas ${E.num(ultimo('costo_unitario', ref) or 0)} por "
+                                                    help=f"Hoy pagas ${E.num(S.costo_compra(ref) or 0)} por "
                                                          f"unidad a tu proveedor principal ({ref}).")
                     eventos.append(X.Evento("retraso", float(v), costo_alt=c_alt))
                 elif t == "precio":
@@ -250,8 +250,8 @@ if len(afectadas) > 1:
             "Unidades perdidas, sin ajustar": r.get("perdida_extra_sin", np.nan),
             f"{u_pl.capitalize()} extra sin stock, ajustando": r.get("quiebre_extra_aj", np.nan),
             **({"Ingresos vs. sin evento ($)": (lambda dd: dd.iloc[1]["ingresos"] - dd.iloc[0]["ingresos"])(
-                X.impacto_dinero(c, esc, ultimo("precio", e), ultimo("costo_unitario", e)))}
-               if ultimo("precio", e) else {}),
+                X.impacto_dinero(c, esc, S.precio(e), S.costo(e)))}
+               if S.precio(e) else {}),
         })
     tabla = pd.DataFrame(filas)
     k1, k2, k3, k4 = st.columns(4)
@@ -341,7 +341,7 @@ with col_a.container(border=True):
                       nombre_banda="Rango con el evento", nombre_p50="Con el evento")
     fig.add_trace(go.Scatter(x=c.base["fecha"], y=c.base["P50"], name="Sin el evento", mode="lines",
                              line=dict(color=E.TINTA_MUTED, width=1.6, dash="dot"), hovertemplate="%{y:,.0f}"))
-    precio_ent = ultimo("precio", ent)
+    precio_ent = S.precio(ent)
     if precio_ent:
         pv = X.precio_por_periodo(precio_ent, esc, len(c.base))
         fig.add_trace(go.Scatter(x=c.base["fecha"], y=pv, name="Precio de venta", yaxis="y2", mode="lines",
@@ -408,15 +408,15 @@ else:
                      column_config={k: st.column_config.NumberColumn(format="%.0f") for k in ("Actual", "Con el evento")})
 
 # ---------------------------------------------------------------- impacto en dinero
-# solo si el dataset trae precio: el sitio no inventa datos que el archivo no tiene
+# solo si hay precio (del archivo o asignado en Finanzas): el sitio no inventa montos
 din = None
-if dp.tiene("precio"):
+if S.precio(ent):
     st.write("")
     st.markdown(f"### Impacto en dinero · {ent}")
-    precio_arch = ultimo("precio", ent)
-    costo_arch = ultimo("costo_unitario", ent)
+    precio_arch = S.precio(ent)
+    costo_arch = S.costo_compra(ent)
     with st.popover("Precio y costo usados", icon=":material/tune:"):
-        st.caption(f"Por defecto se usa el último valor de tu archivo para {ent}. Puedes cambiarlos aquí.")
+        st.caption(f"Por defecto se usan los valores de {ent} de la página Finanzas. Puedes probar otros aquí.")
         precio_ent = st.number_input("Precio de venta por unidad ($)", 0.0, None, float(round(precio_arch or 0)), 10.0,
                                      format="%.0f", key=f"precio_din_{ent}") or None
         costo_ent = st.number_input("Costo por unidad del producto ($)", 0.0, None, float(round(costo_arch or 0)), 10.0,
@@ -539,8 +539,8 @@ if hay_inv:
     det["No atendida, sin ajustar"] = c.sim_sin_ajuste["no_atendida"].to_numpy()
     det["Inventario con evento, ajustando"] = c.sim_ajustada["inventario"].to_numpy()
     det["Pedido, ajustando"] = c.sim_ajustada["pedido"].to_numpy()
-if dp.tiene("precio") and ultimo("precio", ent):
-    det["Precio de venta"] = X.precio_por_periodo(ultimo("precio", ent), esc, len(det))
+if S.precio(ent):
+    det["Precio de venta"] = X.precio_por_periodo(S.precio(ent), esc, len(det))
 det["fecha"] = det["fecha"].dt.date
 if din is not None:
     hojas["Impacto en dinero"] = vista.rename(columns={"": "Mundo"}).round(0)

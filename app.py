@@ -13,7 +13,8 @@ secciones = {
         st.Page("paginas/datos.py", title="1. Tus datos", icon=":material/upload_file:"),
         st.Page("paginas/pronostico.py", title="2. Pronóstico", icon=":material/show_chart:"),
         st.Page("paginas/decisiones.py", title="3. Decisiones", icon=":material/inventory_2:"),
-        st.Page("paginas/escenarios.py", title="4. Escenarios", icon=":material/thunderstorm:"),
+        st.Page("paginas/finanzas.py", title="4. Finanzas", icon=":material/payments:"),
+        st.Page("paginas/escenarios.py", title="5. Escenarios", icon=":material/thunderstorm:"),
     ],
     "Explorar": [st.Page("paginas/analisis.py", title="Análisis de tus datos", icon=":material/insights:")],
 }

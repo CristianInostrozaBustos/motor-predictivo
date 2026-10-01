@@ -157,6 +157,12 @@ else:
 m3.metric("Cantidad sugerida", f"{E.num(d.cantidad)} u." if d.fecha_pedido is not None else "—")
 m4.metric("Te alcanza para", f"{E.num(d.cobertura_dias)} días" if d.cobertura_dias is not None else "—",
           help="Días que dura el inventario actual con la demanda pronosticada.")
+cc_ent = S.costo_compra(ent)
+if cc_ent:
+    cap = d.inventario * cc_ent
+    st.caption(f":material/savings: Capital en inventario hoy: **{E.clp_md(cap)}** · mantenerlo cuesta ≈ "
+               f"**{E.clp_md(cap * S.costo_mantener_pct() / 100 / 12)} al mes** "
+               f"({E.num(S.costo_mantener_pct())}% anual; se ajusta en Finanzas).")
 tecnico = st.toggle("Ver detalle técnico", key="dec_tecnico",
                     help="Stock de seguridad, punto de reorden, meta y cómo se calculan.")
 if tecnico:
@@ -260,8 +266,8 @@ if modo == "Automático":
         E.grafico(fig_automatico(sim_sug), key="fig_inv")
 else:
     # ------------------------------------------------------------ tú decides
-    precio = ultimo("precio")
-    costo_arch = ultimo("costo_unitario")
+    precio = S.precio(ent)
+    costo_arch = S.costo_compra(ent)
     sug_ped = sim_sug[sim_sug["pedido"] > 0]
     f0 = sug_ped["fecha"].iloc[0] if len(sug_ped) else pr["fecha"].iloc[0]
     q0 = float(sug_ped["pedido"].iloc[0]) if len(sug_ped) else 0.0

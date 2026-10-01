@@ -9,10 +9,10 @@ st.markdown(
     f"""
     <div class="hero">
       <div class="eyebrow">{E.NOMBRE_APP}</div>
-      <h1>Pronostica la demanda de cualquier negocio y decide cuánto abastecer</h1>
+      <h1>Pronostica la demanda, decide cuánto abastecer y mide su impacto en plata</h1>
       <p>Sube tu historial de ventas o demanda. El motor detecta la estructura de los datos, elige solo cómo
       entrenar una red LSTM según cuántos datos tienes y entrega pronósticos con rango de incertidumbre,
-      política de inventario y escenarios what-if.</p>
+      política de inventario, su impacto financiero y escenarios what-if.</p>
       <div class="chips">
         <span class="chip">CSV o Excel</span>
         <span class="chip">Diario, semanal o mensual</span>
@@ -28,9 +28,9 @@ st.write("")
 st.markdown("### Cómo funciona")
 pasos = [
     ("1", "Sube tus datos", "CSV o Excel con tu historial. El sistema reconoce las columnas y limpia huecos y duplicados."),
-    ("2", "Elige cuánto pronosticar", "Días, semanas o meses hacia adelante. El sistema elige solo la mejor forma de entrenar."),
-    ("3", "Mira el pronóstico", "El valor más probable y el rango en que se moverá la demanda, con su precisión medida."),
-    ("4", "Decide qué pedir", "Stock de seguridad, punto de reorden, cuánto pedir y cuándo, para cada producto."),
+    ("2", "Mira el pronóstico", "El valor más probable y el rango en que se moverá la demanda, con su precisión medida."),
+    ("3", "Decide qué pedir", "Cuánto pedir y cuándo, en automático o decidiendo tú, para cada producto."),
+    ("4", "Mide el impacto en plata", "Ingresos, margen, capital en inventario y la probabilidad de cumplir tu meta."),
 ]
 cols = st.columns(4)
 for col, (n, titulo, texto) in zip(cols, pasos):

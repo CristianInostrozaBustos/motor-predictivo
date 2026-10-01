@@ -197,6 +197,79 @@ def pronostico_escenario(h, cambios, entidades):
                                           cambios_t, tuple(entidades))
 
 
+# ---------------------------------------------------------------- valores ($) por producto
+# Precio de venta y costo unitario: se toman del archivo cuando vienen y el usuario puede asignarlos o corregirlos.
+# Sin valores, el sitio muestra todo en unidades: nunca inventa montos.
+
+def _ultimo_valor(dp, rol, e):
+    if not dp.tiene(rol):
+        return None
+    v = dp.df.loc[dp.df["entidad"] == e, rol].dropna()
+    return float(v.iloc[-1]) if len(v) and v.iloc[-1] > 0 else None
+
+
+def valores(dp=None) -> pd.DataFrame:
+    """Tabla por producto: precio, costo y de dónde salió cada uno (archivo / tú / —)."""
+    dp = dp or st.session_state.get("dp")
+    if dp is None:
+        return pd.DataFrame(columns=["precio", "costo", "origen_precio", "origen_costo"])
+    usuario = st.session_state.get("valores_usuario", {}).get(clave_dataset(dp), {})
+    filas = []
+    for e in sorted(dp.df["entidad"].unique()):
+        p_arch, c_arch = _ultimo_valor(dp, "precio", e), _ultimo_valor(dp, "costo_unitario", e)
+        p_u, c_u = usuario.get("precio", {}).get(e), usuario.get("costo", {}).get(e)
+        precio = p_u if p_u is not None else p_arch
+        costo = c_u if c_u is not None else c_arch
+        filas.append(dict(entidad=e, precio=precio or None, costo=costo or None,
+                          origen_precio="tú" if p_u is not None else ("archivo" if p_arch else "—"),
+                          origen_costo="tú" if c_u is not None else ("archivo" if c_arch else "—")))
+    return pd.DataFrame(filas).set_index("entidad")
+
+
+def guardar_valores(dp, tabla: pd.DataFrame):
+    """Guarda lo que el usuario asignó (solo lo que difiere del archivo)."""
+    reg = st.session_state.setdefault("valores_usuario", {}).setdefault(clave_dataset(dp), {"precio": {}, "costo": {}})
+    for e, fila in tabla.iterrows():
+        for col in ("precio", "costo"):
+            v = fila[col]
+            arch = _ultimo_valor(dp, "precio" if col == "precio" else "costo_unitario", e)
+            v = None if v is None or pd.isna(v) or v <= 0 else float(v)
+            if v is None and arch is None or (v is not None and arch is not None and abs(v - arch) < 1e-9):
+                reg[col].pop(e, None)
+            else:
+                reg[col][e] = v if v is not None else 0.0   # 0 = el usuario borró el valor del archivo
+
+
+def precio(e):
+    v = valores()
+    return float(v.loc[e, "precio"]) if e in v.index and pd.notna(v.loc[e, "precio"]) else None
+
+
+def costo(e):
+    """Costo unitario usable para margen: se ignora si es mayor o igual al precio (suele ser el precio de un insumo)."""
+    v = valores()
+    if e not in v.index or pd.isna(v.loc[e, "costo"]):
+        return None
+    c, p = float(v.loc[e, "costo"]), v.loc[e, "precio"]
+    return None if (pd.notna(p) and c >= float(p)) else c
+
+
+def costo_compra(e):
+    """Costo por unidad comprada, tal como está (para gasto y capital en inventario)."""
+    v = valores()
+    return float(v.loc[e, "costo"]) if e in v.index and pd.notna(v.loc[e, "costo"]) else None
+
+
+def hay_precios():
+    v = valores()
+    return bool(len(v)) and v["precio"].notna().any()
+
+
+def costo_mantener_pct():
+    """Costo anual de mantener inventario, como % de su valor (bodega, capital, mermas). 20% es una referencia común."""
+    return float(st.session_state.get("costo_mantener_pct", 20.0))
+
+
 def errores_modelo(e):
     """Errores reales del modelo (real − P50) en la prueba con datos pasados, para el stock de seguridad."""
     _, res = resultado()

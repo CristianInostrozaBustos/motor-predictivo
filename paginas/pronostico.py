@@ -29,21 +29,41 @@ with st.container(border=True):
     else:
         nombre_vista = S.titulo_seleccion(sel, dp)
 
+    # ------------------------------------------------------------ unidades o pesos
+    en_pesos = False
+    if S.hay_precios():
+        en_pesos = S.elegir_uno("Ver en", ["Unidades", "Pesos ($)"], key="unid_pron", estado="ver_en") == "Pesos ($)"
+    if en_pesos:
+        precios_v = {e: S.precio(e) for e in ver}
+        sin_p = [e for e in ver if not precios_v[e]]
+        ver = [e for e in ver if precios_v[e]] or ver
+        if sin_p:
+            st.caption(f":material/info: {len(sin_p)} sin precio no se incluyen en la vista en pesos "
+                       "(asígnalo en Finanzas).")
+        fut_v = {e: fut[e].assign(**{q: fut[e][q] * (precios_v.get(e) or 0) for q in ("P10", "P50", "P90")}) for e in ver}
+        df_v = dp.df[dp.df["entidad"].isin(ver)].copy()
+        df_v["objetivo"] = df_v["objetivo"] * df_v["entidad"].map(precios_v).fillna(0)
+        obj_v, fmt, hov = "Ingresos ($)", E.clp_corto, "$%{y:,.0f}"
+    else:
+        fut_v, df_v, obj_v, fmt, hov = fut, dp.df, obj, E.num, "%{y:,.0f}"
+    if comparar:
+        sel = [e for e in sel if e in ver]
+
     # ------------------------------------------------------------ datos de la vista
-    base = dp.df[dp.df["entidad"].isin(ver)]
+    base = df_v[df_v["entidad"].isin(ver)]
     hist = base.groupby("fecha", as_index=False)["objetivo"].sum()
-    pr = pd.concat([fut[e] for e in ver]).groupby("fecha", as_index=False)[["P10", "P50", "P90"]].sum()
+    pr = pd.concat([fut_v[e] for e in ver]).groupby("fecha", as_index=False)[["P10", "P50", "P90"]].sum()
     anterior = hist["objetivo"].tail(H).sum()
     total_p50 = pr["P50"].sum()
     var = (total_p50 - anterior) / anterior * 100 if anterior > 0 else None
 
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric(f"Total esperado ({H} {fi['unidad_pl']})", E.num(total_p50))
-    c2.metric(f"Promedio por {fi['unidad']}", E.num(pr["P50"].mean()))
+    c1.metric(f"Total esperado ({H} {fi['unidad_pl']})", fmt(total_p50))
+    c2.metric(f"Promedio por {fi['unidad']}", fmt(pr["P50"].mean()))
     c3.metric(f"Vs. últimos {H} {fi['unidad_pl']}", E.pct(var) if var is not None else "—",
               delta=("sube" if var > 0 else "baja") if var is not None else None,
               delta_color="off", delta_arrow="off")
-    c4.metric("Escenario alto (P90)", E.num(pr["P90"].sum()), delta=f"bajo (P10): {E.num(pr['P10'].sum())}",
+    c4.metric("Escenario alto (P90)", fmt(pr["P90"].sum()), delta=f"bajo (P10): {fmt(pr['P10'].sum()).replace('$', chr(92) + '$')}",
               delta_color="off", delta_arrow="off",
               help="Rango probable del total entre el escenario bajo y el alto. Al sumar varios, es una aproximación (suma de rangos).")
 
@@ -52,22 +72,22 @@ with st.container(border=True):
     if not comparar:
         h_ver = hist.tail(atras)
         fig = E.fig_banda(pr["fecha"], pr["P10"], pr["P50"], pr["P90"], nombre_banda="Rango probable (P10–P90)",
-                          nombre_p50="Pronóstico")
+                          nombre_p50="Pronóstico", hover=hov)
         fig.add_trace(go.Scatter(x=h_ver["fecha"], y=h_ver["objetivo"], name="Historial",
-                                 line=dict(color=E.TINTA, width=1.5), hovertemplate="%{y:,.0f}"))
+                                 line=dict(color=E.TINTA, width=1.5), hovertemplate=hov))
     else:
         fig = go.Figure()
         for e in sel:
             col = E.color_sku(e, entidades)
-            g = dp.df[(dp.df["entidad"] == e) & (dp.df["fecha"] >= desde)]
+            g = df_v[(df_v["entidad"] == e) & (df_v["fecha"] >= desde)]
             fig.add_trace(go.Scatter(x=g["fecha"], y=g["objetivo"], name=str(e), legendgroup=str(e), mode="lines",
-                                     line=dict(color=col, width=1.3), opacity=0.55, hovertemplate="%{y:,.0f}"))
-            f = fut[e]
+                                     line=dict(color=col, width=1.3), opacity=0.55, hovertemplate=hov))
+            f = fut_v[e]
             fig.add_trace(go.Scatter(x=f["fecha"], y=f["P50"], name=f"{e} (pronóstico)", legendgroup=str(e),
                                      showlegend=False, mode="lines", line=dict(color=col, width=2.4),
-                                     hovertemplate="%{y:,.0f} (pronóstico)"))
+                                     hovertemplate=hov + " (pronóstico)"))
     fig.add_vline(x=hist["fecha"].iloc[-1], line=dict(color=E.EJE, width=1, dash="dot"))
-    fig.update_layout(title=f"{obj} · {nombre_vista}", yaxis_title=obj, height=460)
+    fig.update_layout(title=f"{obj_v} · {nombre_vista}", yaxis_title=obj_v, height=460)
     E.grafico(fig, key="fig_pron")
     if comparar:
         st.caption("Línea tenue: historial. Línea gruesa, a la derecha de la línea punteada: pronóstico. "
@@ -93,7 +113,7 @@ if "Tabla del pronóstico" in (vistas or []):
     st.markdown(f"### Tabla del pronóstico · {nombre_vista}")
     nom_col = S.mayus(S.nombre_entidad(dp))
     if comparar:
-        tabla = pd.concat([fut[e].assign(entidad=e) for e in sel])
+        tabla = pd.concat([fut_v[e].assign(entidad=e) for e in sel])
     else:
         tabla = pr.copy()
     tabla["fecha"] = tabla["fecha"].dt.strftime("%d/%m/%Y")
