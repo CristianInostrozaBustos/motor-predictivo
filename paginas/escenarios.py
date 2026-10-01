@@ -396,7 +396,7 @@ else:
                      column_config={k: st.column_config.NumberColumn(format="%.0f") for k in ("Actual", "Con el evento")})
 
 # ---------------------------------------------------------------- impacto en dinero
-# solo si hay precio (del archivo o asignado en Finanzas): el sitio no inventa montos
+# requiere precio (del archivo o asignado en Finanzas)
 din = None
 if S.precio(ent):
     st.write("")
@@ -450,8 +450,7 @@ if S.precio(ent):
         else:
             k4.metric("Margen", "—", help="Ingresa el costo por unidad en «Precio y costo usados» para ver el margen.")
 
-        # lectura en una frase
-        frases = []
+            frases = []
         if abs(cp) > 1e-9:
             dd = (r["demanda_esc_evento"] / r["demanda_base_evento"] - 1) * 100 if r["demanda_base_evento"] else 0
             ref_precio = aj if aj is not None else sa   # efecto del precio sin mezclarlo con los quiebres

@@ -198,8 +198,7 @@ def pronostico_escenario(h, cambios, entidades):
 
 
 # ---------------------------------------------------------------- valores ($) por producto
-# Precio de venta y costo unitario: se toman del archivo cuando vienen y el usuario puede asignarlos o corregirlos.
-# Sin valores, el sitio muestra todo en unidades: nunca inventa montos.
+# Precio y costo unitario: del archivo o asignados por el usuario. Sin valores se trabaja en unidades.
 
 def _ultimo_valor(dp, rol, e):
     if not dp.tiene(rol):
@@ -339,8 +338,8 @@ def _sync(clave_widget, clave_estado):
 
 
 def selector_vista(entidades, dp, key):
-    """Botones para elegir uno o varios productos (se superponen en los gráficos). Sin vista total: cada producto
-    se ve por separado. Devuelve siempre una lista. La elección se comparte entre páginas."""
+    """Selección de uno o varios productos (se superponen en los gráficos). Devuelve una lista; la elección se
+    comparte entre páginas."""
     entidades = list(entidades)
     if len(entidades) <= 1:
         return entidades

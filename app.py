@@ -24,7 +24,7 @@ if S.modo_dev():
     secciones["Desarrollador"] = [st.Page("paginas/tecnico.py", title="Detalles técnicos", icon=":material/code:")]
 
 st.logo("favicon.png", size="large")
-# El menú se dibuja a mano para poder poner la cuenta justo debajo de Inicio
+# Menú manual: la cuenta va debajo de Inicio
 pg = st.navigation([inicio] + [p for ps in secciones.values() for p in ps], position="hidden")
 with st.sidebar:
     st.page_link(inicio)

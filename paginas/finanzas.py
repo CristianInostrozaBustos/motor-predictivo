@@ -63,7 +63,7 @@ with st.expander("Precio y costo por " + S.nombre_entidad(dp), expanded=bool(sin
                    "probablemente es el precio de un insumo. El margen de esos productos no se calcula.")
 
 # ---------------------------------------------------------------- qué ver
-# cada producto por separado: la meta, el rango y el margen son de un producto a la vez
+# un producto a la vez
 ent = S.selector_entidad(entidades, dp, key="fin")
 ver = [ent]
 nombre_vista = str(ent)
@@ -125,8 +125,7 @@ else:
 st.markdown(f"### Tu meta · {nombre_vista}")
 
 
-# error real del modelo en la prueba con datos pasados, sumado entre productos fecha a fecha: así se capturan
-# los errores que se mueven juntos (si un producto se queda corto, los otros suelen quedarse cortos también)
+# error real del backtest, sumado por fecha (captura errores correlacionados)
 _err_total = None
 for e in ver:
     bt = res.backtest.get(e)
