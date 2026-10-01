@@ -14,34 +14,57 @@ E.encabezado("Modo desarrollador", "Detalles técnicos",
              "Lo que el sistema decidió y midió por dentro. Esta página no aparece para los usuarios.")
 
 # ---------------------------------------------------------------- almacenamiento (siempre visible)
+def tamano(b):
+    """Bytes legibles: 512 KB, 1,2 MB, 1 GB."""
+    b = float(b or 0)
+    if b < 1024:
+        return f"{b:.0f} B"
+    for u in ("KB", "MB", "GB"):
+        b /= 1024
+        if b < 1024 or u == "GB":
+            return f"{b:.1f}".rstrip("0").rstrip(".").replace(".", ",") + f" {u}"
+
+
 st.markdown("## Almacenamiento")
 cfg = S._config_almacen()
-if cfg is None:
-    st.warning("No se encontró la sección **[almacen]** en los secrets: se usa la carpeta local, que se borra cuando "
-               "la app se reinicia o se duerme.", icon=":material/cloud_off:")
-else:
-    faltan = [k for k in ("tipo", "url", "key") if not cfg.get(k)]
-    clave = str(cfg.get("key", ""))
-    tipo_clave = ("service_role antigua (eyJ…)" if clave.startswith("eyJ") else
-                  "secret nueva (sb_secret_…)" if clave.startswith("sb_secret_") else
-                  "publishable (sb_publishable_…): NO sirve, usa la secret" if clave.startswith("sb_publishable_") else
-                  "formato no reconocido")
-    st.caption(f"Sección [almacen] encontrada · tipo = `{cfg.get('tipo')}` · url = `{cfg.get('url')}` · "
-               f"bucket = `{cfg.get('bucket', 'motor')}` · clave: {tipo_clave}"
-               + (f" · faltan: {', '.join(faltan)}" if faltan else ""))
-    if cfg.get("tipo") != "supabase":
-        st.warning('En [almacen] debe decir `tipo = "supabase"` (con comillas).', icon=":material/warning:")
 alm = S.almacen_persistente()
-st.caption(f"Archivos: **{alm.nombre}** · Registro de usuarios: **{S.repositorio().nombre}**.")
+supabase = alm.nombre == "Supabase Storage"
 try:
-    lista = alm.listar()
-    if lista:
-        st.dataframe(pd.DataFrame(lista), width="stretch", hide_index=True)
-    else:
-        st.caption("Todavía no hay modelos guardados.")
+    uso = alm.uso_total()
+    error = None
 except Exception as e:  # noqa: BLE001
-    st.error(f"No se pudo conectar con el almacenamiento: {e}")
-st.caption(f"Origen del modelo actual: {st.session_state.get('resultado', {}).get('origen', '—')}")
+    uso, error = None, e
+with st.container(border=True):
+    c1, c2 = st.columns([2, 1], vertical_alignment="center")
+    if supabase:
+        c1.markdown(f"**Supabase** · {cfg.get('url')}")
+    else:
+        c1.markdown("**Carpeta local** · temporal: se borra cuando la app se reinicia o se duerme")
+    if uso is not None:
+        limite = getattr(alm, "limite_bytes", None)
+        c2.markdown(f"**{tamano(uso)}" + (f" / {tamano(limite)}**" if limite else "**"))
+        if limite:
+            st.progress(min(uso / limite, 1.0))
+if error is not None:
+    st.error(f"No se pudo conectar con el almacenamiento: {error}")
+if cfg is None:
+    st.caption(":material/info: Para guardar de forma permanente, agrega la sección [almacen] en los secrets del sitio.")
+elif cfg.get("tipo") != "supabase" or not cfg.get("url") or not cfg.get("key"):
+    st.warning('Revisa la sección [almacen] de los secrets: debe tener tipo = "supabase", url y key.',
+               icon=":material/warning:")
+elif str(cfg.get("key", "")).startswith("sb_publishable_"):
+    st.warning("La clave es la publishable: usa la service_role o la secret.", icon=":material/warning:")
+with st.expander("Ver modelos guardados", icon=":material/folder:"):
+    try:
+        lista = alm.listar()
+        if lista:
+            st.dataframe(pd.DataFrame(lista).assign(bytes=lambda x: x["bytes"].map(lambda v: tamano(v or 0)))
+                         .rename(columns={"archivo": "Archivo", "bytes": "Tamaño", "modificado": "Modificado"}),
+                         width="stretch", hide_index=True)
+        else:
+            st.caption("Todavía no hay modelos guardados.")
+    except Exception:  # noqa: BLE001
+        st.caption("No se pudo leer la lista.")
 
 dp = st.session_state.get("dp")
 if dp is None:

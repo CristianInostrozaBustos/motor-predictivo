@@ -92,6 +92,13 @@ class CarpetaLocal:
                 out.append(dict(archivo=prefijo + f, bytes=os.path.getsize(p), modificado=time.ctime(os.path.getmtime(p))))
         return out
 
+    def uso_total(self):
+        """Bytes ocupados por todos los archivos guardados."""
+        total = 0
+        for raiz, _, archivos in os.walk(self.raiz if hasattr(self, "raiz") else self._p("")):
+            total += sum(os.path.getsize(os.path.join(raiz, f)) for f in archivos)
+        return total
+
     def _podar(self):
         d = self._p("modelos/")
         archivos = sorted((os.path.join(d, f) for f in os.listdir(d) if f.endswith(".zip")), key=os.path.getmtime)
@@ -135,6 +142,25 @@ class SupabaseStorage:
         r.raise_for_status()
         return [dict(archivo=prefijo + o["name"], bytes=(o.get("metadata") or {}).get("size"), modificado=o.get("updated_at"))
                 for o in r.json()]
+
+
+def _uso_supabase(self, prefijo="", nivel=0):
+    """Suma el tamaño de todos los objetos del bucket (recorre las carpetas hasta 4 niveles)."""
+    r = requests.post(f"{self.base}/object/list/{self.bucket}", headers=self.h,
+                      json={"prefix": prefijo, "limit": 1000}, timeout=self.timeout)
+    r.raise_for_status()
+    total = 0
+    for o in r.json():
+        meta = o.get("metadata")
+        if meta:                                   # archivo
+            total += int(meta.get("size") or 0)
+        elif nivel < 4:                            # carpeta
+            total += _uso_supabase(self, f"{prefijo}{o['name']}/", nivel + 1)
+    return total
+
+
+SupabaseStorage.uso_total = _uso_supabase
+SupabaseStorage.limite_bytes = 1024 ** 3          # plan gratis de Supabase: 1 GB de archivos
 
 
 def crear(config: dict | None):
