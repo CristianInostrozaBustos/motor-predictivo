@@ -195,15 +195,14 @@ def fig_automatico(sim):
             fig.add_vrect(x0=fp["fecha"], x1=llegadas["fecha"].iloc[0], fillcolor=E.NARANJO, opacity=0.06, line_width=0)
     fig.add_trace(go.Scatter(x=sim["fecha"], y=sim["inventario"], name="Inventario en bodega", mode="lines",
                              line=dict(color=E.AZUL, width=2.4), hovertemplate="%{y:,.0f}"))
-    fig.add_trace(go.Scatter(x=sim["fecha"], y=sim["ss"], name="Stock de seguridad", mode="lines",
+    fig.add_trace(go.Scatter(x=sim["fecha"], y=sim["ss"], name="Stock de seguridad (SS)", mode="lines",
                              line=dict(color=E.ROJO, dash="dot", width=1.4), hovertemplate="%{y:,.0f}"))
     fig.add_trace(go.Scatter(x=sim["fecha"], y=sim["posicion"], name="Bodega + pedidos en camino", mode="lines",
                              line=dict(color=E.AZUL, width=1.3, dash="dot"), opacity=0.6, hovertemplate="%{y:,.0f}"))
-    fig.add_trace(go.Scatter(x=sim["fecha"], y=sim["rop"], name="Punto de reorden", mode="lines",
+    fig.add_trace(go.Scatter(x=sim["fecha"], y=sim["rop"], name="Punto de reorden (ROP)", mode="lines",
                              line=dict(color=E.NARANJO, dash="dash", width=1.4), hovertemplate="%{y:,.0f}"))
-    if tecnico:
-        fig.add_trace(go.Scatter(x=sim["fecha"], y=sim["meta"], name="Meta (T)", mode="lines",
-                                 line=dict(color=E.AMARILLO, width=1.2, dash="dashdot"), hovertemplate="%{y:,.0f}"))
+    fig.add_trace(go.Scatter(x=sim["fecha"], y=sim["meta"], name="Meta (T)", mode="lines",
+                             line=dict(color=E.AMARILLO, width=1.4, dash="dashdot"), hovertemplate="%{y:,.0f}"))
     fig.add_trace(go.Scatter(x=list(ped["fecha"]) or [None], y=list(ped["inventario"]) or [None], mode="markers",
                              name="Se pide", marker=dict(color=E.NARANJO, size=11, symbol="triangle-up",
                                                          line=dict(color="white", width=1.5)),
@@ -222,8 +221,12 @@ def fig_comparar(sug, tuyo):
                              line=dict(color=E.TINTA_MUTED, width=1.8, dash="dot"), hovertemplate="%{y:,.0f}"))
     fig.add_trace(go.Scatter(x=tuyo["fecha"], y=tuyo["inventario"], name="Tu plan", mode="lines",
                              line=dict(color=E.AZUL, width=2.6), hovertemplate="%{y:,.0f}"))
-    fig.add_trace(go.Scatter(x=tuyo["fecha"], y=tuyo["ss"], name="Stock de seguridad", mode="lines",
+    fig.add_trace(go.Scatter(x=tuyo["fecha"], y=tuyo["ss"], name="Stock de seguridad (SS)", mode="lines",
                              line=dict(color=E.ROJO, dash="dot", width=1.2), hovertemplate="%{y:,.0f}"))
+    fig.add_trace(go.Scatter(x=tuyo["fecha"], y=tuyo["rop"], name="Punto de reorden (ROP)", mode="lines",
+                             line=dict(color=E.NARANJO, dash="dash", width=1.2), hovertemplate="%{y:,.0f}"))
+    fig.add_trace(go.Scatter(x=tuyo["fecha"], y=tuyo["meta"], name="Meta (T)", mode="lines",
+                             line=dict(color=E.AMARILLO, width=1.2, dash="dashdot"), hovertemplate="%{y:,.0f}"))
     man = tuyo[tuyo["pedido_manual"] > 0]
     fig.add_trace(go.Scatter(x=man["fecha"], y=man["inventario"], mode="markers", name="Tu compra",
                              marker=dict(color="#4a3aa7", size=14, symbol="star", line=dict(color="white", width=1)),
