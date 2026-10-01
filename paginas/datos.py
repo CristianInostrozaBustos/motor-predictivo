@@ -118,26 +118,19 @@ f0, f1 = dp.df["fecha"].min(), dp.df["fecha"].max()
 c1, c2, c3 = st.columns(3)
 c1.metric(S.mayus(S.nombre_entidad(dp, n_ent != 1)), E.num(n_ent))
 c2.metric("Historial", f"{f0:%m/%Y} – {f1:%m/%Y}")
-c3.metric(f"Total {dp.etiquetas['objetivo']}", E.num(dp.df["objetivo"].sum()))
+c3.metric("Datos", fi["nombre"].capitalize(), help="Frecuencia detectada en tu archivo.")
 
 with st.container(border=True):
     todas = sorted(dp.df["entidad"].unique())
     sel = S.selector_vista(todas, dp, key="datos")
-    if sel is None:
-        total = dp.df.groupby("fecha")["objetivo"].sum().reset_index()
-        fig = go.Figure(go.Scatter(x=total["fecha"], y=total["objetivo"], line=dict(color=E.AZUL, width=1.5),
-                                   hovertemplate="%{y:,.0f}", name="Total"))
-        titulo = f"{dp.etiquetas['objetivo']} por {fi['unidad']} · " + (
-            f"todos los {S.nombre_entidad(dp, True)} (total)" if len(todas) > 1 else str(todas[0]))
-        fig.update_layout(title=titulo, height=320, showlegend=False)
-    else:
-        fig = go.Figure()
-        for e in sel:
-            g = dp.df[dp.df["entidad"] == e]
-            fig.add_trace(go.Scatter(x=g["fecha"], y=g["objetivo"], name=str(e), mode="lines",
-                                     line=dict(color=E.color_sku(e, todas), width=1.4), hovertemplate="%{y:,.0f}"))
-        fig.update_layout(title=f"{dp.etiquetas['objetivo']} por {fi['unidad']} · {S.titulo_seleccion(sel, dp)}",
-                          height=380, showlegend=True)
+    fig = go.Figure()
+    for e in sel:
+        g = dp.df[dp.df["entidad"] == e]
+        fig.add_trace(go.Scatter(x=g["fecha"], y=g["objetivo"], name=str(e), mode="lines",
+                                 line=dict(color=E.color_sku(e, todas) if len(sel) > 1 else E.AZUL, width=1.4),
+                                 hovertemplate="%{y:,.0f}"))
+    fig.update_layout(title=f"{dp.etiquetas['objetivo']} por {fi['unidad']} · {S.titulo_seleccion(sel, dp)}",
+                      height=380, showlegend=len(sel) > 1)
     E.grafico(fig, key="fig_total")
 
 if not plan.viable:

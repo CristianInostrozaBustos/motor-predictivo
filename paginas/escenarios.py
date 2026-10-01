@@ -254,18 +254,6 @@ if len(afectadas) > 1:
                if S.precio(e) else {}),
         })
     tabla = pd.DataFrame(filas)
-    k1, k2, k3, k4 = st.columns(4)
-    tot_b = sum(c.resumen["demanda_base_evento"] for c in comps.values())
-    tot_e = sum(c.resumen["demanda_esc_evento"] for c in comps.values())
-    var_tot = (tot_e / tot_b - 1) * 100 if tot_b else 0
-    k1.metric("Demanda durante el evento", E.num(tot_e), delta=E.pct(var_tot) if abs(var_tot) >= 0.05 else None,
-              delta_color="off")
-    if hay_inv:
-        afect = int((tabla[f"{u_pl.capitalize()} extra sin stock, sin ajustar"] > 0).sum())
-        k2.metric("Con quiebre si no ajustas", f"{afect} de {len(afectadas)}",
-                  help=f"{S.mayus(S.nombre_entidad(dp, True))} que se quedan sin stock en algún momento.")
-        k3.metric("Sin atender, sin ajustar", E.num(tabla["Unidades perdidas, sin ajustar"].sum()), help="Unidades de demanda perdidas.")
-        k4.metric("Sin atender, ajustando", E.num(sum(c.resumen["perdida_extra_aj"] for c in comps.values())))
     st.dataframe(tabla.sort_values(f"{u_pl.capitalize()} extra sin stock, sin ajustar", ascending=False) if hay_inv else tabla,
                  width="stretch", hide_index=True, column_config={
                      "Demanda en el evento": st.column_config.NumberColumn(format="%+.1f%%"),

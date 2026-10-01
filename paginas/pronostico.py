@@ -22,12 +22,9 @@ E.encabezado(
 # ---------------------------------------------------------------- qué ver
 with st.container(border=True):
     sel = S.selector_vista(entidades, dp, key="pron")
-    ver = entidades if sel is None else sel
-    comparar = sel is not None and len(sel) > 1
-    if sel is None:
-        nombre_vista = (f"todos los {S.nombre_entidad(dp, True)} (total)" if len(entidades) > 1 else str(entidades[0]))
-    else:
-        nombre_vista = S.titulo_seleccion(sel, dp)
+    ver = list(sel)
+    comparar = len(sel) > 1
+    nombre_vista = S.titulo_seleccion(sel, dp)
 
     # ------------------------------------------------------------ unidades o pesos
     en_pesos = False
@@ -40,14 +37,18 @@ with st.container(border=True):
         if sin_p:
             st.caption(f":material/info: {len(sin_p)} sin precio no se incluyen en la vista en pesos "
                        "(asígnalo en Finanzas).")
-        fut_v = {e: fut[e].assign(**{q: fut[e][q] * (precios_v.get(e) or 0) for q in ("P10", "P50", "P90")}) for e in ver}
+        maximo = max(float((fut[e]["P90"] * (precios_v.get(e) or 0)).max()) for e in ver)
+        div, obj_v, hov = E.escala_pesos(maximo)
+        fut_v = {e: fut[e].assign(**{q: fut[e][q] * (precios_v.get(e) or 0) / div for q in ("P10", "P50", "P90")})
+                 for e in ver}
         df_v = dp.df[dp.df["entidad"].isin(ver)].copy()
-        df_v["objetivo"] = df_v["objetivo"] * df_v["entidad"].map(precios_v).fillna(0)
-        obj_v, fmt, hov = "Ingresos ($)", E.clp_corto, "$%{y:,.0f}"
+        df_v["objetivo"] = df_v["objetivo"] * df_v["entidad"].map(precios_v).fillna(0) / div
+        fmt = lambda v, _d=div: E.clp_corto(v * _d)  # noqa: E731
     else:
-        fut_v, df_v, obj_v, fmt, hov = fut, dp.df, obj, E.num, "%{y:,.0f}"
-    if comparar:
-        sel = [e for e in sel if e in ver]
+        fut_v, df_v, obj_v, fmt, hov, div = fut, dp.df, obj, E.num, "%{y:,.0f}", 1.0
+    sel = [e for e in sel if e in ver]
+    comparar = len(sel) > 1
+    nombre_vista = S.titulo_seleccion(sel, dp)
 
     # ------------------------------------------------------------ datos de la vista
     base = df_v[df_v["entidad"].isin(ver)]
@@ -57,15 +58,28 @@ with st.container(border=True):
     total_p50 = pr["P50"].sum()
     var = (total_p50 - anterior) / anterior * 100 if anterior > 0 else None
 
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric(f"Total esperado ({H} {fi['unidad_pl']})", fmt(total_p50))
-    c2.metric(f"Promedio por {fi['unidad']}", fmt(pr["P50"].mean()))
-    c3.metric(f"Vs. últimos {H} {fi['unidad_pl']}", E.pct(var) if var is not None else "—",
-              delta=("sube" if var > 0 else "baja") if var is not None else None,
-              delta_color="off", delta_arrow="off")
-    c4.metric("Escenario alto (P90)", fmt(pr["P90"].sum()), delta=f"bajo (P10): {fmt(pr['P10'].sum()).replace('$', chr(92) + '$')}",
-              delta_color="off", delta_arrow="off",
-              help="Rango probable del total entre el escenario bajo y el alto. Al sumar varios, es una aproximación (suma de rangos).")
+    if not comparar:
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric(f"Esperado ({H} {fi['unidad_pl']})", fmt(total_p50))
+        c2.metric(f"Promedio por {fi['unidad']}", fmt(pr["P50"].mean()))
+        c3.metric(f"Vs. últimos {H} {fi['unidad_pl']}", E.pct(var) if var is not None else "—",
+                  delta=("sube" if var > 0 else "baja") if var is not None else None,
+                  delta_color="off", delta_arrow="off")
+        c4.metric("Escenario alto (P90)", fmt(pr["P90"].sum()),
+                  delta=f"bajo (P10): {fmt(pr['P10'].sum()).replace('$', chr(92) + '$')}",
+                  delta_color="off", delta_arrow="off",
+                  help="Rango probable entre el escenario bajo y el alto para el período.")
+    else:
+        filas_r = []
+        for e in sel:
+            f = fut_v[e]
+            h_e = df_v[df_v["entidad"] == e]["objetivo"].tail(H).sum()
+            v_e = (f["P50"].sum() - h_e) / h_e * 100 if h_e > 0 else None
+            filas_r.append({S.mayus(S.nombre_entidad(dp)): e, f"Esperado ({H} {fi['unidad_pl']})": fmt(f["P50"].sum()),
+                            f"Promedio por {fi['unidad']}": fmt(f["P50"].mean()),
+                            f"Vs. últimos {H} {fi['unidad_pl']}": E.pct(v_e) if v_e is not None else "—",
+                            "Rango probable (P10–P90)": f"{fmt(f['P10'].sum())} – {fmt(f['P90'].sum())}"})
+        st.dataframe(pd.DataFrame(filas_r), hide_index=True, width="stretch")
 
     atras = min(len(hist), max(3 * H, {"D": 120, "W": 52, "M": 36, "Q": 12}[dp.config.frecuencia]))
     desde = hist["fecha"].iloc[-atras]
@@ -116,6 +130,7 @@ if "Tabla del pronóstico" in (vistas or []):
         tabla = pd.concat([fut_v[e].assign(entidad=e) for e in sel])
     else:
         tabla = pr.copy()
+    tabla[["P10", "P50", "P90"]] = tabla[["P10", "P50", "P90"]] * div
     tabla["fecha"] = tabla["fecha"].dt.strftime("%d/%m/%Y")
     tabla = tabla.rename(columns={"fecha": "Fecha", "entidad": nom_col, "P50": "Pronóstico", "P10": "Escenario bajo (P10)",
                                   "P90": "Escenario alto (P90)"})
@@ -130,16 +145,12 @@ if "Qué tan preciso es" in (vistas or []):
                "no los conociéramos, y comparando con lo que realmente pasó.")
     if len(ver) > 1:
         m = met.loc[[e for e in ver if e in met.index]]
-        wape = (m["wape"] * 1).mean()
-        c1, c2, c3 = st.columns(3)
-        c1.metric("Error promedio", E.pct(wape), help="Promedio entre entidades del error absoluto sobre el total real (WAPE).")
-        c2.metric("Aciertos dentro del rango", E.pct(m["cobertura"].mean()))
-        c3.metric("Mejora vs. repetir la temporada anterior", E.pct((m["wape_naive"].mean() - wape) / m["wape_naive"].mean() * 100))
         vista = pd.DataFrame({
             S.mayus(S.nombre_entidad(dp)): m.index,
             "Error": m["wape"].map(lambda v: E.pct(v)),
             "Dentro del rango": m["cobertura"].map(lambda v: E.pct(v)),
             "Error sin modelo": m["wape_naive"].map(lambda v: E.pct(v)),
+            "Mejora vs. sin modelo": ((m["wape_naive"] - m["wape"]) / m["wape_naive"] * 100).map(lambda v: E.pct(v)),
         })
         st.dataframe(vista, width="stretch", hide_index=True)
     else:
@@ -155,17 +166,8 @@ if "Qué tan preciso es" in (vistas or []):
 if "Prueba con datos pasados" in (vistas or []):
     st.markdown("### Prueba con datos pasados")
     con_bt = [e for e in ver if e in res.backtest]
-    SUMA = f"Suma de los {len(con_bt)} seleccionados" if sel is not None else f"Total de {S.nombre_entidad(dp, True)}"
-    if len(con_bt) > 1:
-        prueba = S.elegir_uno("Ver la prueba de", con_bt + [SUMA], key="bt", estado="bt_ent",
-                              defecto=con_bt[0] if sel is not None else SUMA)
-    else:
-        prueba = con_bt[0]
-    if prueba == SUMA:
-        bt = pd.concat([res.backtest[e] for e in con_bt]).groupby(
-            "fecha", as_index=False)[["real", "P10", "P50", "P90", "naive"]].sum()
-    else:
-        bt = res.backtest[prueba]
+    prueba = S.elegir_uno("Ver la prueba de", con_bt, key="bt", estado="bt_ent") if len(con_bt) > 1 else con_bt[0]
+    bt = res.backtest[prueba]
     temporada = {"D": "la última semana", "W": "el mismo período del año anterior",
                  "M": "el mismo mes del año anterior", "Q": "el mismo trimestre del año anterior"}[dp.config.frecuencia]
     with st.container(border=True):

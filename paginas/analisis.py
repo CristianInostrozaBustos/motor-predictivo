@@ -51,9 +51,8 @@ def colores(lista):
 # ---------------------------------------------------------------- estacionalidad
 if "Estacionalidad" in (elegidas or []):
     st.markdown("## Estacionalidad")
-    sel = S.elegir_uno(nom, ["Todas"] + ents, key="est", estado="est_ent",
-                       formato=lambda x: "Todos (total)" if x == "Todas" else x) if n_ent > 1 else ents[0]
-    sub = df if sel == "Todas" else df[df["entidad"] == sel]
+    sel = S.elegir_uno(nom, ents, key="est", estado="est_ent") if n_ent > 1 else ents[0]
+    sub = df[df["entidad"] == sel]
     serie = sub.groupby("fecha")["objetivo"].sum()
     cols = st.columns(2 if dp.config.frecuencia == "D" else 1)
     with cols[0].container(border=True):

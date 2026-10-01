@@ -102,12 +102,6 @@ n_riesgo = sum(d.estado == "Riesgo de quiebre" for d in decs.values())
 unidades = sum(d.cantidad for d in decs.values() if d.estado in ("Pedir ahora", "Riesgo de quiebre"))
 proximas = [d.fecha_pedido for d in decs.values() if d.estado == "Stock suficiente" and d.fecha_pedido is not None]
 
-c1, c2, c3, c4 = st.columns(4)
-c1.metric("Pedir ahora", n_pedir)
-c2.metric("En riesgo de quiebre", n_riesgo, help="El inventario ya está bajo el stock de seguridad.")
-c3.metric("Unidades a pedir hoy", E.num(unidades))
-c4.metric("Próximo pedido programado", min(proximas).strftime("%d/%m/%Y") if proximas else "—")
-
 ESTADOS = {"Riesgo de quiebre": "🔴 Riesgo de quiebre", "Pedir ahora": "🟠 Pedir ahora",
            "Stock suficiente": "🟢 Stock suficiente", "Sin inventario": "⚪ Falta inventario"}
 orden = {"Riesgo de quiebre": 0, "Pedir ahora": 1, "Stock suficiente": 2, "Sin inventario": 3}

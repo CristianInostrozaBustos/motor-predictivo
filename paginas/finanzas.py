@@ -63,20 +63,14 @@ with st.expander("Precio y costo por " + S.nombre_entidad(dp), expanded=bool(sin
                    "probablemente es el precio de un insumo. El margen de esos productos no se calcula.")
 
 # ---------------------------------------------------------------- qué ver
-if len(entidades) > 1:
-    with st.container(border=True):
-        sel = S.selector_vista(entidades, dp, key="fin")
-else:
-    sel = None
-ver = entidades if sel is None else sel
-nombre_vista = (f"todos los {S.nombre_entidad(dp, True)}" if (sel is None and len(entidades) > 1)
-                else S.titulo_seleccion(ver, dp))
+# cada producto por separado: la meta, el rango y el margen son de un producto a la vez
+ent = S.selector_entidad(entidades, dp, key="fin")
+ver = [ent]
+nombre_vista = str(ent)
 precios = {e: S.precio(e) for e in ver}
 costos = {e: S.costo(e) for e in ver}
 con_precio = [e for e in ver if precios[e]]
 en_pesos = bool(con_precio)
-if en_pesos and len(con_precio) < len(ver):
-    st.caption(f":material/info: {len(ver) - len(con_precio)} de {len(ver)} sin precio: no suman en los montos.")
 
 
 def monto(e, serie):
@@ -192,6 +186,8 @@ fechas = fut[ver[0]]["fecha"]
 acum = np.cumsum(sum(((fut[e]["P50"] * (precios[e] or 0.0)) if en_pesos else fut[e]["P50"]).to_numpy() for e in ver))
 puntos = sorted(set(np.linspace(1, H, min(H, 12)).astype(int)))
 sd_t = np.interp(np.arange(1, H + 1), puntos, [sigma_total(t) for t in puntos])
+div, eje_y, hov_y = E.escala_pesos(max(acum.max(), meta)) if en_pesos else (1.0, "Unidades", "%{y:,.0f} u.")
+acum, sd_t, meta_g = acum / div, sd_t / div, meta / div
 with st.container(border=True):
     fig = go.Figure()
     fig.add_trace(go.Scatter(x=fechas, y=acum + P.Z_P10_P90 * sd_t, mode="lines", line=dict(width=0),
@@ -199,34 +195,28 @@ with st.container(border=True):
     fig.add_trace(go.Scatter(x=fechas, y=np.clip(acum - P.Z_P10_P90 * sd_t, 0, None), mode="lines", line=dict(width=0),
                              fill="tonexty", fillcolor=E.AZUL_BANDA, name="Rango probable", hoverinfo="skip"))
     fig.add_trace(go.Scatter(x=fechas, y=acum, name="Pronóstico acumulado", line=dict(color=E.AZUL, width=2.4),
-                             hovertemplate=("$%{y:,.0f}" if en_pesos else "%{y:,.0f} u.")))
-    fig.add_trace(go.Scatter(x=fechas, y=np.linspace(meta / H, meta, H), name="Meta", mode="lines",
-                             line=dict(color=E.NARANJO, width=1.8, dash="dash"),
-                             hovertemplate=("$%{y:,.0f}" if en_pesos else "%{y:,.0f} u.")))
+                             hovertemplate=hov_y))
+    fig.add_trace(go.Scatter(x=fechas, y=np.linspace(meta_g / H, meta_g, H), name="Meta", mode="lines",
+                             line=dict(color=E.NARANJO, width=1.8, dash="dash"), hovertemplate=hov_y))
     fig.update_layout(title=("Ingresos acumulados" if en_pesos else "Ventas acumuladas") + f" vs. tu meta · {nombre_vista}",
-                      yaxis_title="$" if en_pesos else "Unidades", height=400)
+                      yaxis_title=eje_y, height=400)
     E.grafico(fig, key="fig_meta")
     st.caption("La probabilidad usa el error real que tuvo el modelo en la prueba con datos pasados, acumulado en el "
                "período, no solo el rango diario.")
 
-# ---------------------------------------------------------------- por producto
-if len(ver) > 1:
-    st.markdown("### Por " + S.nombre_entidad(dp))
+# ---------------------------------------------------------------- comparación entre productos
+if len(entidades) > 1:
+    st.markdown("### Comparación entre " + S.nombre_entidad(dp, True))
     filas = []
-    for e in ver:
+    for e in entidades:
         u = fut[e]["P50"].sum()
-        fila = {nom: e, "Ventas (u.)": E.num(u)}
-        if en_pesos:
-            ing = u * (precios[e] or 0.0)
-            fila["Ingresos"] = E.clp(ing) if precios[e] else "—"
-            fila["% de los ingresos"] = E.pct(ing / ingresos["P50"] * 100) if ingresos["P50"] and precios[e] else "—"
-            fila["_orden"] = ing
-        if hay_margen:
-            fila["Margen"] = E.clp(u * (precios[e] - costos[e])) if precios[e] and costos[e] else "—"
+        p_e, c_e = S.precio(e), S.costo(e)
+        fila = {nom: e, "Ventas (u.)": E.num(u), "_orden": u * (p_e or 0) if p_e else u}
+        if S.hay_precios():
+            fila["Ingresos"] = E.clp(u * p_e) if p_e else "—"
+            fila["Margen"] = E.clp(u * (p_e - c_e)) if (p_e and c_e) else "—"
         filas.append(fila)
-    tabla = pd.DataFrame(filas)
-    if "_orden" in tabla:
-        tabla = tabla.sort_values("_orden", ascending=False).drop(columns="_orden")
+    tabla = pd.DataFrame(filas).sort_values("_orden", ascending=False).drop(columns="_orden")
     st.dataframe(tabla, hide_index=True, width="stretch")
 
 # ---------------------------------------------------------------- días fuertes y flojos

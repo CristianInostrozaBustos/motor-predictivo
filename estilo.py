@@ -58,6 +58,12 @@ def clp(x):
     return f"{signo}${num(abs(x))}"
 
 
+def escala_pesos(maximo):
+    """Para ejes en $: si los montos son grandes, se grafican en millones (evita "B" o "G" en inglés)."""
+    return ((1e6, "Ingresos (millones de $)", "$%{y:,.1f} M") if maximo >= 1e7
+            else (1.0, "Ingresos ($)", "$%{y:,.0f}"))
+
+
 def clp_corto(x):
     """Montos grandes en corto para tarjetas: $339,0 M · $1.432 M · $85.300."""
     signo = "−" if x < 0 else ""
@@ -100,7 +106,7 @@ def registrar_plantilla():
                    zeroline=False, automargin=True),
         yaxis=dict(gridcolor=GRILLA, gridwidth=1, zeroline=False, linecolor="rgba(0,0,0,0)",
                    tickfont=dict(color=TINTA_MUTED), title=dict(font=dict(color=TINTA_MUTED, size=12)),
-                   separatethousands=True, automargin=True),
+                   separatethousands=True, automargin=True, exponentformat="none"),
         separators=",.",
     )
     t.data.scatter = [go.Scatter(line=dict(width=2))]

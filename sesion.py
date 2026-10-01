@@ -339,48 +339,27 @@ def _sync(clave_widget, clave_estado):
 
 
 def selector_vista(entidades, dp, key):
-    """Selector visible sobre el gráfico: total o uno/varios/todos los productos.
-    Devuelve None para la vista total o la lista de entidades elegidas. La elección se comparte entre páginas."""
+    """Botones para elegir uno o varios productos (se superponen en los gráficos). Sin vista total: cada producto
+    se ve por separado. Devuelve siempre una lista. La elección se comparte entre páginas."""
     entidades = list(entidades)
     if len(entidades) <= 1:
-        return None
-    nom = nombre_entidad(dp)
-    modos = ["Total", f"Por {nom}"]
-    if st.session_state.get("vista_modo") not in ("Total", "Por"):
-        st.session_state["vista_modo"] = "Total"
+        return entidades
     previa = [e for e in st.session_state.get("vista_sel", []) if e in entidades]
     if not previa:
-        previa = entidades if len(entidades) <= MAX_SERIES else _por_volumen(dp, entidades)[:5]
+        previa = _por_volumen(dp, entidades)[:1]
     st.session_state["vista_sel"] = previa
-
-    kw_modo, kw_sel = f"_vm_{key}", f"_vs_{key}"
-    st.session_state[kw_modo] = modos[0] if st.session_state["vista_modo"] == "Total" else modos[1]
+    kw_sel = f"_vs_{key}"
     st.session_state[kw_sel] = previa
-
-    def _sync_modo():
-        v = st.session_state.get(kw_modo)
-        st.session_state["vista_modo"] = "Total" if v in (None, "Total") else "Por"
-
-    c1, c2 = st.columns([1, 3], vertical_alignment="bottom")
-    with c1:
-        st.segmented_control("Ver", modos, key=kw_modo, on_change=_sync_modo, width="stretch")
-    if st.session_state["vista_modo"] == "Total":
-        c2.caption(f"Suma de {'los' if not nom.endswith('a') else 'las'} {len(entidades)} {nombre_entidad(dp, True)}. "
-                   f"Elige «{modos[1]}» para verlos por separado o compararlos.")
-        return None
-    with c2:
-        etiqueta = f"{mayus(nombre_entidad(dp, True))} a mostrar"
-        if len(entidades) <= 12:
-            elegidas = st.pills(etiqueta, entidades, selection_mode="multi", key=kw_sel,
-                                on_change=_sync, args=(kw_sel, "vista_sel"))
-        else:
-            elegidas = st.multiselect(etiqueta, entidades, key=kw_sel, max_selections=MAX_SERIES,
-                                      on_change=_sync, args=(kw_sel, "vista_sel"),
-                                      placeholder=f"Elige hasta {MAX_SERIES}")
-    elegidas = [e for e in entidades if e in (elegidas or [])]
+    etiqueta = f"{mayus(nombre_entidad(dp, True))} a mostrar"
+    if len(entidades) <= MAX_BOTONES:
+        st.pills(etiqueta, entidades, selection_mode="multi", key=kw_sel, on_change=_sync, args=(kw_sel, "vista_sel"))
+    else:
+        st.multiselect(etiqueta, entidades, key=kw_sel, max_selections=MAX_SERIES, on_change=_sync,
+                       args=(kw_sel, "vista_sel"), placeholder=f"Elige hasta {MAX_SERIES}")
+    elegidas = [e for e in entidades if e in (st.session_state.get(kw_sel) or [])]
     if not elegidas:
-        st.caption(f":material/info: Elige al menos un {nom}. Mientras tanto se muestra el total.")
-        return None
+        st.caption(f":material/info: Elige al menos un {nombre_entidad(dp)}. Mientras tanto se muestra el primero.")
+        elegidas = _por_volumen(dp, entidades)[:1]
     return elegidas
 
 
