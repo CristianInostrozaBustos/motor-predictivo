@@ -14,7 +14,7 @@ E.encabezado("Modo desarrollador", "Detalles técnicos",
              "Lo que el sistema decidió y midió por dentro. Esta página no aparece para los usuarios.")
 
 # ---------------------------------------------------------------- almacenamiento (siempre visible)
-st.markdown("## Dónde se guarda todo")
+st.markdown("## Almacenamiento")
 cfg = S._config_almacen()
 if cfg is None:
     st.warning("No se encontró la sección **[almacen]** en los secrets: se usa la carpeta local, que se borra cuando "
