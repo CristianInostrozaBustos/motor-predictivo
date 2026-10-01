@@ -93,7 +93,8 @@ for _, fila in editado.iterrows():
     e = fila[nom]
     inv = fila["Inventario actual"]
     par = P.Parametros(lead_time_dias=float(fila["Lead time (días)"]), revision_dias=float(revision),
-                       nivel_servicio=nivel, inventario_actual=None if pd.isna(inv) else float(inv))
+                       nivel_servicio=nivel, inventario_actual=None if pd.isna(inv) else float(inv),
+                       errores=S.errores_modelo(e))
     decs[e] = P.decidir(e, fut[e], dp.config.frecuencia, par)
 
 n_pedir = sum(d.estado == "Pedir ahora" for d in decs.values())
@@ -165,8 +166,11 @@ if tecnico:
         t2.metric("Punto de reorden hoy", E.num(d.rop), help="Se recalcula cada día con la demanda que viene.")
         t3.metric("Meta (T) hoy", E.num(d.meta),
                   help="Nivel al que cada pedido lleva la posición de inventario (bodega + pedidos en camino).")
-        st.latex(r"SS = Z \cdot \sigma \cdot \sqrt{L} \qquad ROP = \sum_{L} d + SS \qquad T = \sum_{L+P} d + SS")
-        st.caption(f"Demanda pronosticada {E.num(d.d, 1)} por {u} · incertidumbre σ = {E.num(d.sigma, 1)} · "
+        st.latex(r"SS = Z \cdot \sigma_L \qquad ROP = \sum_{L} d + SS \qquad T = \sum_{L+P} d + SS")
+        st.caption(f"σ_L = {E.num(d.sigma_lt)} u.: cuánto se equivocó el modelo, en total, en períodos del largo del "
+                   f"lead time cuando lo probamos con datos pasados (la regla simple σ·√L daría {E.num(d.sigma * np.sqrt(d.L))}). "
+                   "Se usa el mayor de los dos, porque los errores de días seguidos se parecen y se acumulan.")
+        st.caption(f"Demanda pronosticada {E.num(d.d, 1)} por {u} · incertidumbre diaria σ = {E.num(d.sigma, 1)} · "
                    f"lead time {E.num(d.L * dias_p, 1)} días · revisión {E.num(d.P * dias_p, 1)} días · "
                    f"nivel de servicio {nivel}. Cuando la posición (bodega + pedidos en camino) llega al punto de "
                    "reorden, se pide lo necesario para subirla a la meta. Por eso la bodega nunca llega a la meta: "

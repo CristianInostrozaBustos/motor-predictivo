@@ -87,7 +87,7 @@ def _proximos_pedidos(clave, h, nivel, revision, tabla_json):
             continue
         f = tabla.loc[e]
         par = P.Parametros(lead_time_dias=float(f["lead_time"]), revision_dias=float(revision), nivel_servicio=nivel,
-                           inventario_actual=float(f["inventario"]))
+                           inventario_actual=float(f["inventario"]), errores=S.errores_modelo(e))
         sim = P.simular(fut[e], P.decidir(e, fut[e], freq, par))
         ped = sim[sim["pedido"] > 0] if len(sim) else sim
         out[e] = pd.Timestamp(ped["fecha"].iloc[0]).isoformat() if len(ped) else None
@@ -216,7 +216,7 @@ for e in afectadas:
     fila = tabla_pol.loc[e]
     inv = fila["inventario"]
     par = P.Parametros(lead_time_dias=float(fila["lead_time"]), revision_dias=float(revision), nivel_servicio=nivel,
-                       inventario_actual=None if pd.isna(inv) else float(inv))
+                       inventario_actual=None if pd.isna(inv) else float(inv), errores=S.errores_modelo(e))
     comps[e] = X.comparar(e, base[e], con_evento[e], par, esc, freq)
 
 hay_inv = all(c.sim_base is not None for c in comps.values())

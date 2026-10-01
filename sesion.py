@@ -197,6 +197,15 @@ def pronostico_escenario(h, cambios, entidades):
                                           cambios_t, tuple(entidades))
 
 
+def errores_modelo(e):
+    """Errores reales del modelo (real − P50) en la prueba con datos pasados, para el stock de seguridad."""
+    _, res = resultado()
+    if res is None or e not in getattr(res, "backtest", {}):
+        return None
+    bt = res.backtest[e]
+    return (bt["real"] - bt["P50"]).to_numpy(float)
+
+
 def politica_actual(dp, entidades):
     """Parámetros de la política (lead time, inventario, nivel de servicio, revisión).
 

@@ -30,6 +30,7 @@ class Parametros:
     revision_dias: float
     nivel_servicio: str
     inventario_actual: float | None
+    errores: object = None    # errores reales del modelo (real − P50) en la prueba con datos pasados
 
 
 @dataclass
@@ -50,6 +51,8 @@ class Decision:
     fecha_pedido: pd.Timestamp | None
     aviso: str = ""
     z: float = 1.282
+    errores: object = None
+    sigma_lt: float = 0.0          # incertidumbre de la demanda acumulada durante el lead time
 
 
 def _suma(x: np.ndarray, desde: int, largo: float) -> float:
@@ -71,6 +74,28 @@ def _suma(x: np.ndarray, desde: int, largo: float) -> float:
     return total
 
 
+def sigma_acumulado(errores, L: float) -> float:
+    """Error real acumulado durante L períodos, medido en la prueba con datos pasados.
+
+    Suma los errores (real − P50) en ventanas de L períodos y toma su raíz media cuadrática. A diferencia de
+    σ·√L, captura que los errores de días seguidos se parecen (si el modelo se queda corto un día, suele quedarse
+    corto el siguiente) y el sesgo, que es lo que de verdad vacía la bodega mientras llega un pedido.
+    """
+    if errores is None:
+        return 0.0
+    e = np.asarray(errores, float)
+    e = e[np.isfinite(e)]
+    n = len(e)
+    if n < 4 or L <= 0:
+        return 0.0
+    w = int(max(1, min(round(L), n // 2)))          # ventana que alcanza a medirse con el historial de prueba
+    sumas = np.convolve(e, np.ones(w), mode="valid")
+    s = float(np.sqrt(np.mean(sumas ** 2)))
+    if L > w:                                        # lead time más largo que lo medible: se extrapola
+        s *= np.sqrt(L / w)
+    return s
+
+
 def decidir(entidad: str, pron: pd.DataFrame, freq: str, par: Parametros) -> Decision:
     dias = FRECUENCIAS[freq]["dias"]
     L = max(par.lead_time_dias / dias, 1e-6)
@@ -84,7 +109,8 @@ def decidir(entidad: str, pron: pd.DataFrame, freq: str, par: Parametros) -> Dec
     d = float(ventana["P50"].mean())
     sigma = float(((ventana["P90"] - ventana["P10"]) / (2 * Z_P10_P90)).clip(lower=0).mean())
     z = Z_NIVEL[par.nivel_servicio]
-    ss = z * sigma * np.sqrt(L)
+    sigma_lt = max(sigma * np.sqrt(L), sigma_acumulado(par.errores, L))
+    ss = z * sigma_lt
     p50 = pron["P50"].to_numpy(float)
     # el punto de reorden cubre la demanda pronosticada mientras llega el pedido (no un promedio)
     rop = _suma(p50, 0, L) + ss
@@ -92,13 +118,14 @@ def decidir(entidad: str, pron: pd.DataFrame, freq: str, par: Parametros) -> Dec
 
     I = par.inventario_actual
     if I is None or np.isnan(I):
-        return Decision(entidad, d, sigma, L, P, ss, rop, meta, None, "Sin inventario", 0.0, None, None, None, aviso, z)
+        return Decision(entidad, d, sigma, L, P, ss, rop, meta, None, "Sin inventario", 0.0, None, None, None, aviso, z,
+                        par.errores, sigma_lt)
 
     cobertura = I / d * dias if d > 0 else np.inf
     # fecha y cantidad del próximo pedido: salen de la misma simulación que se grafica, para que la tabla,
     # el texto y el gráfico digan lo mismo (el punto de reorden de ese día se recalcula con la demanda de entonces)
     from .escenarios import simular as simular_base
-    rop_t, meta_t, _ = politica_dinamica(pron, L, P, z)
+    rop_t, meta_t, _ = politica_dinamica(pron, L, P, z, par.errores)
     sim = simular_base(pron["fecha"].to_numpy(), p50, I, rop_t, meta_t, L)
     ped = sim.index[sim["pedido"] > 0]
     if len(ped):
@@ -114,10 +141,11 @@ def decidir(entidad: str, pron: pd.DataFrame, freq: str, par: Parametros) -> Dec
         estado = "Stock suficiente"
     if estado != "Stock suficiente" and (hasta is None or hasta > 0):
         hasta, fecha, cantidad = 0.0, pron["fecha"].iloc[0], max(0.0, meta - I)
-    return Decision(entidad, d, sigma, L, P, ss, rop, meta, I, estado, cantidad, hasta, cobertura, fecha, aviso, z)
+    return Decision(entidad, d, sigma, L, P, ss, rop, meta, I, estado, cantidad, hasta, cobertura, fecha, aviso, z,
+                    par.errores, sigma_lt)
 
 
-def politica_dinamica(pron: pd.DataFrame, L, P: float, z: float):
+def politica_dinamica(pron: pd.DataFrame, L, P: float, z: float, errores=None):
     """ROP, meta y SS recalculados en cada período con el pronóstico de los períodos que vienen.
 
     L puede ser un escalar o un arreglo (lead time en períodos del pedido emitido en cada período).
@@ -128,12 +156,16 @@ def politica_dinamica(pron: pd.DataFrame, L, P: float, z: float):
     p50 = pron["P50"].to_numpy(float)
     sig = ((pron["P90"] - pron["P10"]).to_numpy(float) / (2 * Z_P10_P90)).clip(min=0)
     rop, meta, ss = np.zeros(n), np.zeros(n), np.zeros(n)
+    acum = {}
     for t in range(n):
         # en el período t la demanda de t ya ocurrió: se cubre desde t+1 hasta que llegue el pedido
         w = max(1, int(np.ceil(L[t] + P)))
         sl = slice(min(t + 1, n - 1), min(n, t + 1 + w))
         sg = sig[sl].mean()
-        ss[t] = z * sg * np.sqrt(L[t])
+        clave = round(float(L[t]), 1)
+        if clave not in acum:
+            acum[clave] = sigma_acumulado(errores, L[t])
+        ss[t] = z * max(sg * np.sqrt(L[t]), acum[clave])
         rop[t] = _suma(p50, t + 1, L[t]) + ss[t]
         meta[t] = _suma(p50, t + 1, L[t] + P) + ss[t]
     return rop, meta, ss
@@ -148,7 +180,7 @@ def simular(pron: pd.DataFrame, dec: Decision, manuales: dict | None = None, aut
     if dec.inventario is None:
         return pd.DataFrame()
     from .escenarios import simular as simular_base
-    rop, meta, ss = politica_dinamica(pron, dec.L, dec.P, dec.z)
+    rop, meta, ss = politica_dinamica(pron, dec.L, dec.P, dec.z, dec.errores)
     sim = simular_base(pron["fecha"].to_numpy(), pron["P50"].to_numpy(), dec.inventario, rop, meta, dec.L,
                        manuales=manuales, auto_desde=auto_desde)
     sim["ss"] = ss

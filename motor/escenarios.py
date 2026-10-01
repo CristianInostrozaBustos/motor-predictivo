@@ -201,7 +201,8 @@ def comparar(entidad, pron_base, pron_esc_modelo, par: Parametros, esc: Escenari
 
     dec_base = decidir(entidad, pron_base, freq, par)
     par_esc = Parametros(lead_time_dias=par.lead_time_dias + esc.retraso_dias(), revision_dias=par.revision_dias,
-                         nivel_servicio=par.nivel_servicio, inventario_actual=par.inventario_actual)
+                         nivel_servicio=par.nivel_servicio, inventario_actual=par.inventario_actual,
+                         errores=par.errores)
     desde_evento = pron_esc.iloc[esc.desde:].reset_index(drop=True)
     dec_esc = decidir(entidad, desde_evento if len(desde_evento) else pron_esc, freq, par_esc)
 
@@ -210,8 +211,8 @@ def comparar(entidad, pron_base, pron_esc_modelo, par: Parametros, esc: Escenari
     k = int(np.ceil(lt_esc.max())) + 1
     lt_plan = _anticipar(lt_esc, k)
 
-    rop_b, meta_b, ss_b = politica_dinamica(pron_base, lt_base, P_per, z)
-    rop_e, meta_e, ss_e = politica_dinamica(pron_esc, lt_plan, P_per, z)
+    rop_b, meta_b, ss_b = politica_dinamica(pron_base, lt_base, P_per, z, par.errores)
+    rop_e, meta_e, ss_e = politica_dinamica(pron_esc, lt_plan, P_per, z, par.errores)
     difiere = np.where(np.abs(rop_e - rop_b) > 0.01 * np.maximum(rop_b, 1e-9))[0]
     inicio_ajuste = int(difiere[0]) if len(difiere) else esc.desde
 
