@@ -119,7 +119,8 @@ def registrar_plantilla():
 CSS = """
 <style>
 
-.block-container { padding-top: 2.2rem; padding-bottom: 3rem; max-width: 1240px; }
+.block-container { padding-top: 3.4rem; padding-bottom: 3rem; max-width: 1240px; }
+header[data-testid="stHeader"] { background: transparent; height: 2.6rem; }
 h1, h2, h3 { letter-spacing: -0.02em; color: #0b0b0b; }
 h1 { font-weight: 800 !important; }
 h2 { font-weight: 700 !important; font-size: 1.45rem !important; }
