@@ -125,10 +125,12 @@ for e, d in sorted(decs.items(), key=lambda x: (orden[x[1].estado], str(x[0]))):
         "Cobertura (días)": d.cobertura_dias,
     })
 tabla = pd.DataFrame(filas)
-st.dataframe(tabla, width="stretch", hide_index=True, column_config={
-    c: st.column_config.NumberColumn(format="%.0f") for c in
-    ["Inventario", "Stock de seguridad", "Punto de reorden hoy", "Meta (T) hoy", "Próximo pedido (u.)", "Cobertura (días)"]
-})
+# en pantalla solo lo que sirve para decidir; el detalle técnico queda en el Excel
+vista = tabla[[nom, "Estado", "Inventario", "Fecha del próximo pedido", "Próximo pedido (u.)", "Cobertura (días)"]].rename(
+    columns={"Próximo pedido (u.)": "Cantidad sugerida (u.)", "Cobertura (días)": "Te alcanza para (días)"})
+for c in ["Inventario", "Cantidad sugerida (u.)", "Te alcanza para (días)"]:
+    vista[c] = vista[c].map(lambda v: "" if pd.isna(v) else E.num(v))
+st.dataframe(vista, width="stretch", hide_index=True)
 
 # ---------------------------------------------------------------- detalle
 st.write("")
@@ -139,18 +141,38 @@ pr = fut[ent]                       # horizonte máximo: alcanza para ver llegar
 u = fi["unidad"]
 dias_p = fi["dias"]
 
-m1, m2, m3, m4 = st.columns(4)
-m1.metric("Stock de seguridad hoy", E.num(d.ss))
-m2.metric("Punto de reorden hoy", E.num(d.rop),
-          help="Se recalcula cada día con la demanda que viene; en el gráfico se ve cómo cambia.")
-m3.metric("Meta (T) hoy", E.num(d.meta),
-          help="Nivel al que cada pedido lleva la posición de inventario (bodega + pedidos en camino).")
-m4.metric("Inventario actual", E.num(d.inventario) if d.inventario is not None else "—")
-
 if d.inventario is None:
     E.nota(f"Ingresa el inventario actual de <b>{ent}</b> en <b>Lead time e inventario</b> (arriba) para ver la "
            "proyección del inventario y la fecha del próximo pedido.")
     st.stop()
+
+# ---------------------------------------------------------------- lo esencial, en 4 tarjetas
+m1, m2, m3, m4 = st.columns(4)
+m1.metric("Inventario actual", f"{E.num(d.inventario)} u.")
+if d.fecha_pedido is None:
+    m2.metric("Próximo pedido", "—", help=f"No hace falta pedir en los {E.num(len(pr) * dias_p)} días analizados.")
+else:
+    m2.metric("Próximo pedido", "Hoy" if d.estado in ("Pedir ahora", "Riesgo de quiebre") else f"{d.fecha_pedido:%d/%m/%Y}")
+m3.metric("Cantidad sugerida", f"{E.num(d.cantidad)} u." if d.fecha_pedido is not None else "—")
+m4.metric("Te alcanza para", f"{E.num(d.cobertura_dias)} días" if d.cobertura_dias is not None else "—",
+          help="Días que dura el inventario actual con la demanda pronosticada.")
+tecnico = st.toggle("Ver detalle técnico", key="dec_tecnico",
+                    help="Stock de seguridad, punto de reorden, meta y cómo se calculan.")
+if tecnico:
+    with st.container(border=True):
+        t1, t2, t3 = st.columns(3)
+        t1.metric("Stock de seguridad hoy", E.num(d.ss))
+        t2.metric("Punto de reorden hoy", E.num(d.rop), help="Se recalcula cada día con la demanda que viene.")
+        t3.metric("Meta (T) hoy", E.num(d.meta),
+                  help="Nivel al que cada pedido lleva la posición de inventario (bodega + pedidos en camino).")
+        st.latex(r"SS = Z \cdot \sigma \cdot \sqrt{L} \qquad ROP = \sum_{L} d + SS \qquad T = \sum_{L+P} d + SS")
+        st.caption(f"Demanda pronosticada {E.num(d.d, 1)} por {u} · incertidumbre σ = {E.num(d.sigma, 1)} · "
+                   f"lead time {E.num(d.L * dias_p, 1)} días · revisión {E.num(d.P * dias_p, 1)} días · "
+                   f"nivel de servicio {nivel}. Cuando la posición (bodega + pedidos en camino) llega al punto de "
+                   "reorden, se pide lo necesario para subirla a la meta. Por eso la bodega nunca llega a la meta: "
+                   "mientras el pedido viaja, se sigue vendiendo.")
+        if d.aviso:
+            st.caption(":material/warning: " + d.aviso)
 
 
 def ultimo(rol):
@@ -160,277 +182,196 @@ def ultimo(rol):
     return float(v.iloc[-1]) if len(v) and v.iloc[-1] > 0 else None
 
 
-def figura(sim, titulo, y_max, marcar_manual=False):
-    """Inventario en bodega, posición (bodega + en camino), meta, punto de reorden, pedidos y llegadas."""
+def fig_automatico(sim):
     fig = go.Figure()
-    ped = sim[sim["pedido"] > 0]
-    lle = sim[sim["llegada"] > 0]
-    for _, fp in ped.iterrows():   # tramo en camino de cada pedido
+    ped, lle = sim[sim["pedido"] > 0], sim[sim["llegada"] > 0]
+    for _, fp in ped.iterrows():
         llegadas = lle[lle["fecha"] > fp["fecha"]]
         if len(llegadas):
-            fig.add_vrect(x0=fp["fecha"], x1=llegadas["fecha"].iloc[0], fillcolor=E.NARANJO, opacity=0.07, line_width=0)
-    fig.add_trace(go.Scatter(x=sim["fecha"], y=sim["inventario"], name="Inventario en bodega", mode="lines",
+            fig.add_vrect(x0=fp["fecha"], x1=llegadas["fecha"].iloc[0], fillcolor=E.NARANJO, opacity=0.06, line_width=0)
+    fig.add_trace(go.Scatter(x=sim["fecha"], y=sim["inventario"], name="Inventario", mode="lines",
                              line=dict(color=E.AZUL, width=2.4), hovertemplate="%{y:,.0f}"))
-    fig.add_trace(go.Scatter(x=sim["fecha"], y=sim["posicion"], name="Posición (bodega + en camino)", mode="lines",
-                             line=dict(color=E.AZUL, width=1.3, dash="dot"), opacity=0.6, hovertemplate="%{y:,.0f}"))
-    fig.add_trace(go.Scatter(x=sim["fecha"], y=sim["meta"], name="Meta (T)", mode="lines",
-                             line=dict(color=E.AMARILLO, width=1.3, dash="dashdot"), hovertemplate="%{y:,.0f}"))
     fig.add_trace(go.Scatter(x=sim["fecha"], y=sim["rop"], name="Punto de reorden", mode="lines",
-                             line=dict(color=E.NARANJO, dash="dash", width=1.5), hovertemplate="%{y:,.0f}"))
-    fig.add_trace(go.Scatter(x=sim["fecha"], y=sim["ss"], name="Stock de seguridad", mode="lines",
-                             line=dict(color=E.ROJO, dash="dot", width=1.3), hovertemplate="%{y:,.0f}"))
-    auto = ped[ped["pedido_manual"] <= 0]
-    fig.add_trace(go.Scatter(x=auto["fecha"], y=auto["inventario"], mode="markers", name="Pedido del modelo",
-                             marker=dict(color=E.NARANJO, size=10, symbol="triangle-up", line=dict(color="white", width=1.5)),
-                             customdata=auto["pedido"], hovertemplate="pedido de %{customdata:,.0f} u."))
-    if True:   # siempre en la leyenda, para que los dos gráficos tengan el mismo tamaño
-        man = ped[ped["pedido_manual"] > 0]
-        fig.add_trace(go.Scatter(x=list(man["fecha"]) or [None], y=list(man["inventario"]) or [None], mode="markers", name="Tu compra",
-                                 marker=dict(color="#4a3aa7", size=13, symbol="star", line=dict(color="white", width=1)),
-                                 customdata=man["pedido_manual"], hovertemplate="tu compra: %{customdata:,.0f} u."))
-    fig.add_trace(go.Scatter(x=lle["fecha"], y=lle["inventario"], mode="markers", name="Llega el pedido",
-                             marker=dict(color=E.VERDE, size=10, symbol="diamond", line=dict(color="white", width=1.5)),
-                             customdata=lle["llegada"], hovertemplate="llegan %{customdata:,.0f} u."))
-    qb = sim[sim["quiebre"]]
-    if True:
-        fig.add_trace(go.Scatter(x=list(qb["fecha"]) or [None], y=list(qb["inventario"]) or [None], mode="markers",
-                                 name="Sin stock",
-                                 marker=dict(color=E.ROJO, size=8, symbol="x"),
-                                 customdata=qb["no_atendida"], hovertemplate="faltan %{customdata:,.0f} u."))
-    fig.add_trace(go.Scatter(x=[None], y=[None], mode="markers", name="Pedido en camino",
-                             marker=dict(symbol="square", size=12, color=E.NARANJO, opacity=0.25)))
-    fig.update_layout(title=titulo, yaxis_title="Unidades", height=560, margin=dict(t=56, b=8),
-                      yaxis=dict(range=[0, y_max * 1.05]),
-                      legend=dict(orientation="h", yanchor="top", y=-0.17, xanchor="left", x=0))
+                             line=dict(color=E.NARANJO, dash="dash", width=1.4), hovertemplate="%{y:,.0f}"))
+    if tecnico:
+        fig.add_trace(go.Scatter(x=sim["fecha"], y=sim["posicion"], name="Posición (bodega + en camino)", mode="lines",
+                                 line=dict(color=E.AZUL, width=1.2, dash="dot"), opacity=0.6, hovertemplate="%{y:,.0f}"))
+        fig.add_trace(go.Scatter(x=sim["fecha"], y=sim["meta"], name="Meta (T)", mode="lines",
+                                 line=dict(color=E.AMARILLO, width=1.2, dash="dashdot"), hovertemplate="%{y:,.0f}"))
+        fig.add_trace(go.Scatter(x=sim["fecha"], y=sim["ss"], name="Stock de seguridad", mode="lines",
+                                 line=dict(color=E.ROJO, dash="dot", width=1.2), hovertemplate="%{y:,.0f}"))
+    fig.add_trace(go.Scatter(x=list(ped["fecha"]) or [None], y=list(ped["inventario"]) or [None], mode="markers",
+                             name="Se pide", marker=dict(color=E.NARANJO, size=11, symbol="triangle-up",
+                                                         line=dict(color="white", width=1.5)),
+                             customdata=list(ped["pedido"]) or [None], hovertemplate="se piden %{customdata:,.0f} u."))
+    fig.add_trace(go.Scatter(x=list(lle["fecha"]) or [None], y=list(lle["inventario"]) or [None], mode="markers",
+                             name="Llega", marker=dict(color=E.VERDE, size=10, symbol="diamond",
+                                                       line=dict(color="white", width=1.5)),
+                             customdata=list(lle["llegada"]) or [None], hovertemplate="llegan %{customdata:,.0f} u."))
+    fig.update_layout(title=f"Inventario proyectado · {ent}", yaxis_title="Unidades", height=430, margin=dict(t=90))
     return fig
 
 
-def lectura_pedido(sim):
-    ped = sim[sim["pedido"] > 0]
-    lle = sim[sim["llegada"] > 0]
-    if not len(ped):
-        return "No se emite ningún pedido en el horizonte analizado."
-    f_ped = ped["fecha"].iloc[0]
-    llegadas = lle[lle["fecha"] > f_ped]
-    t = (f"El pedido del {f_ped:%d/%m/%Y} ({E.num(ped['pedido'].iloc[0])} u.) lleva la posición hasta la meta")
-    if len(llegadas):
-        t += (f" y llega el {llegadas['fecha'].iloc[0]:%d/%m/%Y} (lead time de {E.num(d.L * dias_p)} días). "
-              "Mientras va en camino (zona sombreada) la bodega sigue bajando: por eso la bodega nunca llega a la meta, "
-              "solo la posición.")
-    return t
+def fig_comparar(sug, tuyo):
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=sug["fecha"], y=sug["inventario"], name="Sugerencia del modelo", mode="lines",
+                             line=dict(color=E.TINTA_MUTED, width=1.8, dash="dot"), hovertemplate="%{y:,.0f}"))
+    fig.add_trace(go.Scatter(x=tuyo["fecha"], y=tuyo["inventario"], name="Tu plan", mode="lines",
+                             line=dict(color=E.AZUL, width=2.6), hovertemplate="%{y:,.0f}"))
+    fig.add_trace(go.Scatter(x=tuyo["fecha"], y=tuyo["rop"], name="Punto de reorden", mode="lines",
+                             line=dict(color=E.NARANJO, dash="dash", width=1.2), hovertemplate="%{y:,.0f}"))
+    man = tuyo[tuyo["pedido_manual"] > 0]
+    fig.add_trace(go.Scatter(x=man["fecha"], y=man["inventario"], mode="markers", name="Tu compra",
+                             marker=dict(color="#4a3aa7", size=14, symbol="star", line=dict(color="white", width=1)),
+                             customdata=man["pedido_manual"], hovertemplate="tu compra: %{customdata:,.0f} u."))
+    qb = tuyo[tuyo["quiebre"]]
+    if len(qb):
+        fig.add_trace(go.Scatter(x=qb["fecha"], y=qb["inventario"], mode="markers", name="Sin stock",
+                                 marker=dict(color=E.ROJO, size=8, symbol="x"),
+                                 customdata=qb["no_atendida"], hovertemplate="faltan %{customdata:,.0f} u."))
+    fig.update_layout(title=f"Tu plan vs. la sugerencia del modelo · {ent}", yaxis_title="Unidades", height=430,
+                      margin=dict(t=90))
+    return fig
 
 
 sim_sug = P.simular(pr, d)
+sim_tuyo, ev = None, None
 
 # ---------------------------------------------------------------- ¿quién decide?
-modo = S.elegir_uno("¿Quién decide las compras?", ["Automático", "Tú decides"], key="modo", estado="modo_compra")
+modo = S.elegir_uno("¿Quién decide la compra?", ["Automático", "Tú decides"], key="modo", estado="modo_compra")
 
 if modo == "Automático":
-    col_t, col_m = st.columns([1.5, 1], gap="large")
-    with col_m:
-        if d.estado == "Riesgo de quiebre":
-            mensaje = (f"<b>{ent}</b> tiene {E.num(d.inventario)} unidades, bajo el stock de seguridad. "
-                       f"Pide <b>{E.num(d.cantidad)} unidades</b> hoy; es probable un quiebre antes de que llegue.")
-        elif d.estado == "Pedir ahora":
-            mensaje = (f"<b>{ent}</b> tiene {E.num(d.inventario)} unidades, bajo el punto de reorden ({E.num(d.rop)}). "
-                       f"Pide <b>{E.num(d.cantidad)} unidades</b> hoy para llegar a la meta.")
-        elif d.fecha_pedido is not None:
-            mensaje = (f"<b>{ent}</b> tiene stock para unos {E.num(d.cobertura_dias)} días. Según el pronóstico, "
-                       f"el próximo pedido será el <b>{d.fecha_pedido:%d/%m/%Y}</b>, por <b>{E.num(d.cantidad)} unidades</b>.")
-        else:
-            mensaje = (f"<b>{ent}</b> tiene stock para unos {E.num(d.cobertura_dias)} días: no necesita pedido dentro "
-                       f"de los {len(pr)} {fi['unidad_pl']} analizados.")
-        E.nota(mensaje)
-        st.caption(f"Demanda pronosticada {E.num(d.d, 1)} por {u} · incertidumbre σ = {E.num(d.sigma, 1)} · "
-                   f"lead time {E.num(d.L * dias_p, 1)} días · revisión {E.num(d.P * dias_p, 1)} días · "
-                   f"nivel de servicio {nivel}.")
-        if d.aviso:
-            st.caption(":material/warning: " + d.aviso)
-        with st.expander("Cómo se calcula", icon=":material/function:"):
-            st.latex(r"SS = Z \cdot \sigma \cdot \sqrt{L} \qquad ROP = \sum_{L} d + SS \qquad T = \sum_{L+P} d + SS")
-            st.caption("Cada día se suma la demanda pronosticada de los próximos L días (punto de reorden) y de los "
-                       "próximos L + P días (meta); σ sale del ancho del rango P10–P90. Cuando la posición de inventario "
-                       "(bodega + pedidos en camino) llega al punto de reorden, se pide lo necesario para subirla a la meta: "
-                       "cantidad = meta de ese día − posición.")
-    with col_t.container(border=True):
-        E.grafico(figura(sim_sug, f"Sugerencia del modelo · {ent}", float(sim_sug[["posicion", "meta"]].max().max())),
-                  key="fig_inv")
-        st.caption(lectura_pedido(sim_sug))
-    sim_tuyo, plan_activo, ev = None, None, None
+    if d.estado == "Riesgo de quiebre":
+        E.nota(f"🔴 <b>Pide hoy {E.num(d.cantidad)} u. de {ent}.</b> El inventario ya está bajo el stock de seguridad.")
+    elif d.estado == "Pedir ahora":
+        E.nota(f"🟠 <b>Pide hoy {E.num(d.cantidad)} u. de {ent}.</b>")
+    elif d.fecha_pedido is not None:
+        lle = sim_sug[(sim_sug["llegada"] > 0) & (sim_sug["fecha"] > d.fecha_pedido)]
+        E.nota(f"🟢 <b>No necesitas pedir todavía.</b> El modelo pedirá <b>{E.num(d.cantidad)} u.</b> el "
+               f"<b>{d.fecha_pedido:%d/%m/%Y}</b>"
+               + (f", que llegan el {lle['fecha'].iloc[0]:%d/%m/%Y}." if len(lle) else "."))
+    else:
+        E.nota(f"🟢 <b>No necesitas pedir.</b> El inventario alcanza para los {E.num(len(pr) * dias_p)} días analizados.")
+    with st.container(border=True):
+        E.grafico(fig_automatico(sim_sug), key="fig_inv")
 else:
     # ------------------------------------------------------------ tú decides
     precio = ultimo("precio")
     costo_arch = ultimo("costo_unitario")
-    c1, c2, c3 = st.columns([1, 1, 1])
-    costo = c1.number_input("Costo por unidad que pagas ($)", 0.0, None, float(round(costo_arch or 0)), 10.0,
-                            format="%.0f", key=f"costo_plan_{ent}",
-                            help="Lo que te cuesta comprar una unidad. Con esto se calcula el gasto y el ahorro. "
-                                 "Déjalo en 0 si no quieres ver montos.") or None
-    if precio:
-        c2.metric("Precio de venta (de tu archivo)", E.clp(precio))
-    if costo and precio and costo >= precio:
-        c3.caption(":material/warning: El costo es igual o mayor que el precio de venta: revisa el costo. Con este valor "
-                   "no se calcula el margen.")
     sug_ped = sim_sug[sim_sug["pedido"] > 0]
     f0 = sug_ped["fecha"].iloc[0] if len(sug_ped) else pr["fecha"].iloc[0]
     q0 = float(sug_ped["pedido"].iloc[0]) if len(sug_ped) else 0.0
-
-    st.markdown("**Tu decisión de compra**")
-    st.caption(f"El modelo sugiere pedir **{E.num(q0)} u.** el **{f0:%d/%m/%Y}**. Cambia la cantidad (o la fecha) y "
-               "presiona **Activar compra**. Después de tu compra, el modelo vuelve a planificar en la siguiente "
-               f"revisión ({E.num(revision)} días después), con el stock que realmente tengas.")
-    por = "Unidades"
-    if costo:
-        por = S.elegir_uno("Defino la compra por", ["Unidades", "Presupuesto ($)"], key="por", estado="plan_por")
     clave_plan = f"{S.clave_dataset(dp)}_{ent}"
-    base_plan = pd.DataFrame({"Fecha de compra": [f0.date()], "Cantidad (u.)": [float(round(q0))],
-                              "Lead time (días)": [float(round(d.L * dias_p, 1))]})
-    if por == "Presupuesto ($)":
-        b1, _ = st.columns([1, 2])
-        presupuesto = b1.number_input("Presupuesto para esta compra ($)", 0.0, None, float(round(q0 * costo)), 1000.0,
-                                      format="%.0f", key=f"pres_{clave_plan}")
-        base_plan.loc[0, "Cantidad (u.)"] = float(np.floor(presupuesto / costo))
-        st.caption(f"Con {E.clp_md(presupuesto)} alcanzas a comprar **{E.num(base_plan.loc[0, 'Cantidad (u.)'])} u.** "
-                   f"a {E.clp_md(costo)} cada una.")
-    plan = st.data_editor(
-        base_plan, num_rows="dynamic", hide_index=True, width="stretch",
-        key=f"plan_{clave_plan}_{por}",
-        column_config={
-            "Fecha de compra": st.column_config.DateColumn(format="DD/MM/YYYY", min_value=pr["fecha"].iloc[0].date(),
-                                                           max_value=pr["fecha"].iloc[-1].date(), required=True),
-            "Cantidad (u.)": st.column_config.NumberColumn(min_value=0.0, step=1.0, format="%.0f", required=True),
-            "Lead time (días)": st.column_config.NumberColumn(min_value=0.0, step=1.0, format="%.1f",
-                                                              help="Puedes cambiarlo, por ejemplo, para una compra urgente."),
-        },
-    )
-    planes = st.session_state.setdefault("planes_compra", {})
-    b1, b2 = st.columns([1, 3], vertical_alignment="center")
-    if b1.button("Activar compra", type="primary", icon=":material/shopping_cart_checkout:"):
-        planes[clave_plan] = plan.dropna(subset=["Fecha de compra", "Cantidad (u.)"]).copy()
-    plan_activo = planes.get(clave_plan)
-    if plan_activo is None:
-        b2.caption("Todavía no activas una compra: abajo solo ves la sugerencia del modelo.")
-    elif not plan.dropna(subset=["Fecha de compra", "Cantidad (u.)"]).reset_index(drop=True).equals(
-            plan_activo.reset_index(drop=True)):
-        b2.caption(":material/edit: Tienes cambios sin activar.")
 
-    sim_tuyo, ev = None, None
-    if plan_activo is not None and len(plan_activo):
-        fechas = pr["fecha"].dt.normalize()
-        manuales = {}
-        for _, fila in plan_activo.iterrows():
-            f = pd.Timestamp(fila["Fecha de compra"])
-            idx = int(np.searchsorted(fechas.to_numpy(), np.datetime64(f)))
-            if idx < len(pr):
-                q_prev = manuales.get(idx, (0.0, 0.0))[0]
-                manuales[idx] = (q_prev + float(fila["Cantidad (u.)"]), float(fila["Lead time (días)"]) / dias_p)
-        if manuales:
-            auto_desde = max(manuales) + int(np.ceil(d.P))
-            sim_tuyo = P.simular(pr, d, manuales=manuales, auto_desde=auto_desde)
-            ev = P.evaluar_plan(sim_sug, sim_tuyo, auto_desde, precio=precio,
-                                costo=costo if (costo and (not precio or costo < precio)) else costo,
-                                dias_periodo=dias_p)
-            ev["auto_desde"] = pr["fecha"].iloc[min(auto_desde, len(pr) - 1)]
-            ev["manuales"] = manuales
+    with st.popover("Costo, fecha y lead time", icon=":material/tune:"):
+        costo = st.number_input("Costo por unidad que pagas ($)", 0.0, None, float(round(costo_arch or 0)), 10.0,
+                                format="%.0f", key=f"costo_plan_{ent}",
+                                help="Para calcular cuánto ahorras. Déjalo en 0 si no quieres ver montos.") or None
+        fecha_c = st.date_input("Fecha de la compra", f0.date(), min_value=pr["fecha"].iloc[0].date(),
+                                max_value=pr["fecha"].iloc[-1].date(), format="DD/MM/YYYY", key=f"fecha_{clave_plan}")
+        lt_c = st.number_input("Lead time (días)", 0.0, 365.0, float(round(d.L * dias_p, 1)), 1.0, format="%.1f",
+                               key=f"lt_{clave_plan}", help="Cámbialo, por ejemplo, para una compra urgente.")
+        if costo and precio and costo >= precio:
+            st.caption(":material/warning: Este costo es igual o mayor que el precio de venta: probablemente es el "
+                       "precio de un insumo y no el costo del producto.")
 
-    y_max = float(max(sim_sug[["posicion", "meta"]].max().max(),
-                      sim_tuyo[["posicion", "meta"]].max().max() if sim_tuyo is not None else 0))
-    g1, g2 = st.columns(2, gap="medium")
-    with g1.container(border=True):
-        E.grafico(figura(sim_sug, f"Sugerencia del modelo · {ent}", y_max), key="fig_sug")
-        st.caption(lectura_pedido(sim_sug))
-    with g2.container(border=True):
-        if sim_tuyo is None:
-            st.markdown(f"**Tu plan · {ent}**")
-            st.caption("Ingresa tu compra arriba y presiona **Activar compra** para ver cómo quedaría tu inventario.")
+    c1, c2 = st.columns([1, 1.4], vertical_alignment="bottom")
+    with c1:
+        por = "Unidades"
+        if costo:
+            por = S.elegir_uno("Defino la compra en", ["Unidades", "Pesos ($)"], key="por", estado="plan_por")
+        if por == "Unidades":
+            q = st.number_input("¿Cuánto vas a comprar? (u.)", 0.0, None, float(round(q0)), 100.0, format="%.0f",
+                                key=f"q_{clave_plan}")
         else:
-            E.grafico(figura(sim_tuyo, f"Tu plan · {ent}", y_max, marcar_manual=True), key="fig_tuyo")
-            st.caption(f"Tus compras (estrella morada) hasta el {ev['auto_desde']:%d/%m/%Y}; desde ahí el modelo vuelve "
-                       "a comprar solo (triángulos).")
+            monto = st.number_input("¿Cuánto vas a gastar? ($)", 0.0, None, float(round(q0 * costo)), 10000.0,
+                                    format="%.0f", key=f"m_{clave_plan}")
+            q = float(np.floor(monto / costo))
+    c2.caption(f"El modelo sugiere **{E.num(q0)} u.** el **{f0:%d/%m/%Y}**"
+               + (f" ({E.clp_md(q0 * costo)})" if costo else "")
+               + (f". Con tu monto compras **{E.num(q)} u.**" if por != "Unidades" else "") + ".")
 
-    # ------------------------------------------------------------ respuestas
-    if ev is not None:
-        st.markdown(f"### Qué significa tu decisión · {ent}")
-        k1, k2, k3, k4 = st.columns(4)
-        dif_u = ev["compra_tuya"] - ev["compra_sug"]
-        k1.metric("Compras en tu período", f"{E.num(ev['compra_tuya'])} u.",
-                  delta=f"{E.num(dif_u).replace('−', '-')} u. vs. sugerido" if abs(dif_u) >= 1 else "igual que el sugerido",
-                  delta_color="off", delta_arrow="auto" if abs(dif_u) >= 1 else "off",
-                  help=f"Compras entre hoy y el {ev['auto_desde']:%d/%m/%Y}, cuando el modelo vuelve a decidir.")
-        if "ahorro_caja" in ev:
-            k2.metric("Caja que liberas", E.clp(ev["ahorro_caja"]),
-                      delta=f"gastas {E.clp_md(ev['gasto_tuyo'])} en vez de {E.clp_md(ev['gasto_sug'])}",
-                      delta_color="off", delta_arrow="off",
-                      help="Es un ahorro de caja en este período: lo que no compras ahora se compra más adelante.")
-        else:
-            k2.metric("Caja que liberas", "—", help="Ingresa el costo por unidad para ver montos.")
-        dias_q = (ev["quiebres_tuyo"] - ev["quiebres_sug"]) * dias_p
-        k3.metric("Días sin stock que agregas", E.num(max(0, dias_q)),
-                  delta=f"{E.num(ev['perdida_extra'])} u. sin vender" if ev["perdida_extra"] > 0 else "sin quiebres extra",
-                  delta_color="inverse" if ev["perdida_extra"] > 0 else "off",
-                  delta_arrow="off")
-        if "ventas_perdidas" in ev:
-            k4.metric("Ventas que pierdes", E.clp(ev["ventas_perdidas"]),
-                      delta=(f"margen perdido {E.clp_md(ev['margen_perdido'])}" if "margen_perdido" in ev else None),
-                      delta_color="off", delta_arrow="off",
-                      help="Unidades sin stock × precio de venta. A diferencia del ahorro, esta venta no se recupera.")
-        else:
-            k4.metric("Ventas que pierdes", f"{E.num(ev['perdida_extra'])} u.",
-                      help="Tu archivo no trae precio de venta: se muestra en unidades.")
+    t_c = int(np.searchsorted(pr["fecha"].dt.normalize().to_numpy(), np.datetime64(pd.Timestamp(fecha_c))))
+    t_c = min(t_c, len(pr) - 1)
+    auto_desde = t_c + int(np.ceil(d.P))
+    sim_tuyo = P.simular(pr, d, manuales={t_c: (q, lt_c / dias_p)}, auto_desde=auto_desde)
+    margen_ok = costo if (costo and (not precio or costo < precio)) else None
+    ev = P.evaluar_plan(sim_sug, sim_tuyo, auto_desde, precio=precio, costo=costo, dias_periodo=dias_p)
 
-        # la respuesta completa, en palabras
-        man = ev["manuales"]
-        compras_txt = "; ".join(
-            f"<b>{E.num(q)} u.</b> el {pr['fecha'].iloc[t]:%d/%m/%Y}, que llegan el "
-            f"{pr['fecha'].iloc[min(len(pr) - 1, t + max(1, int(np.ceil(lt))))]:%d/%m/%Y}"
-            for t, (q, lt) in sorted(man.items()))
-        frases = [f"Con tu plan compras {compras_txt} (el modelo sugería {E.num(ev['compra_sug'])} u. en ese período)."]
-        if "ahorro_caja" in ev and ev["ahorro_caja"] > 0:
-            frases.append(f"Liberas <b>{E.clp(ev['ahorro_caja'])}</b> de caja en este período.")
-        elif "ahorro_caja" in ev and ev["ahorro_caja"] < 0:
-            frases.append(f"Gastas <b>{E.clp(-ev['ahorro_caja'])}</b> más que lo sugerido en este período.")
-        if ev["perdida_extra"] > 0:
-            frases.append(f"A cambio, te quedas sin stock desde el <b>{ev['primer_quiebre']:%d/%m/%Y}</b> y dejas de vender "
-                          f"<b>{E.num(ev['perdida_extra'])} u.</b>"
-                          + (f" (<b>{E.clp(ev['ventas_perdidas'])}</b> en ventas" +
-                             (f", {E.clp(ev['margen_perdido'])} de margen)" if "margen_perdido" in ev else ")")
-                             if "ventas_perdidas" in ev else "") + ".")
-            if ev.get("dias_absorber"):
-                base_abs = "margen" if "margen_perdido" in ev else "ventas"
-                frases.append(f"Recuperar esa pérdida equivale a unos <b>{E.num(ev['dias_absorber'])} días</b> de {base_abs} "
-                              "normales.")
-            if "ahorro_caja" in ev and "margen_perdido" in ev:
-                if ev["margen_perdido"] > ev["ahorro_caja"]:
-                    frases.append("El margen que pierdes es mayor que la caja que liberas: el recorte sale caro.")
-                else:
-                    frases.append("La caja que liberas es mayor que el margen que pierdes, pero recuerda que la caja solo "
-                                  "se posterga y la venta perdida no vuelve.")
-        elif ev["compra_tuya"] < ev["compra_sug"]:
-            frases.append("Aun así no te quedas sin stock: el inventario alcanza hasta la siguiente compra.")
-        if ev["normaliza"] is not None:
-            frases.append(f"El modelo retoma las compras el {ev['auto_desde']:%d/%m/%Y} y la operación se normaliza el "
-                          f"<b>{ev['normaliza']:%d/%m/%Y}</b>, unos <b>{E.num(ev['dias_normaliza'])} días</b> desde hoy.")
-        else:
-            frases.append(f"Dentro de los {E.num(len(pr) * dias_p)} días analizados la operación no vuelve a la "
-                          "trayectoria sugerida.")
-        E.nota(" ".join(frases))
+    with st.container(border=True):
+        E.grafico(fig_comparar(sim_sug, sim_tuyo), key="fig_tuyo")
 
-        resumen = pd.DataFrame({
-            "": ["Compras en tu período (u.)", "Compras en todo el horizonte (u.)", "Días sin stock",
-                 "Unidades sin vender", "Inventario promedio en bodega (u.)"],
-            "Sugerencia del modelo": [ev["compra_sug"], ev["compra_total_sug"], ev["quiebres_sug"] * dias_p,
-                                      ev["perdida_sug"], ev["inv_prom_sug"]],
-            "Tu plan": [ev["compra_tuya"], ev["compra_total_tuya"], ev["quiebres_tuyo"] * dias_p,
-                        ev["perdida_tuya"], ev["inv_prom_tuyo"]],
-        })
-        for c in ("Sugerencia del modelo", "Tu plan"):
-            resumen[c] = resumen[c].map(E.num)
-        if "gasto_sug" in ev:
-            resumen.loc[len(resumen)] = ["Gasto en tu período", E.clp(ev["gasto_sug"]), E.clp(ev["gasto_tuyo"])]
-        if "ventas_perdidas" in ev:
-            resumen.loc[len(resumen)] = ["Ventas perdidas por quiebres", E.clp(ev["perdida_sug"] * precio),
-                                         E.clp(ev["perdida_tuya"] * precio)]
-        st.dataframe(resumen, hide_index=True, width="stretch")
+    # ------------------------------------------------------------ tres respuestas y un veredicto
+    dif_q = ev["compra_sug"] - ev["compra_tuya"]
+    parecido = abs(dif_q) <= max(0.01 * ev["compra_sug"], 1.0) and ev["perdida_extra"] <= 0
+    k1, k2, k3 = st.columns(3)
+    if costo:
+        ahorro = ev["ahorro_caja"]
+        k1.metric("Ahorras en esta compra" if (ahorro >= 0 or parecido) else "Gastas de más",
+                  E.clp(abs(ahorro)) if not parecido else "$0")
+    else:
+        k1.metric("Compras de menos" if (dif_q >= 0 or parecido) else "Compras de más",
+                  f"{E.num(abs(dif_q))} u." if not parecido else "0 u.")
+    dias_sin = max(0, ev["quiebres_tuyo"] - ev["quiebres_sug"]) * dias_p
+    if precio:
+        k2.metric("Pierdes en ventas", E.clp(ev["ventas_perdidas"]),
+                  help=f"{E.num(ev['perdida_extra'])} u. que no podrás vender por falta de stock.")
+    else:
+        k2.metric("Unidades que no vendes", f"{E.num(ev['perdida_extra'])} u.")
+    al_final = ev["ultimo_quiebre"] is not None and ev["ultimo_quiebre"] >= pr["fecha"].iloc[-1]
+    if ev["perdida_extra"] > 0:
+        k3.metric("Días sin stock", ("≥ " if al_final else "") + E.num(dias_sin),
+                  help=(f"Desde el {ev['primer_quiebre']:%d/%m/%Y} hasta el {ev['ultimo_quiebre']:%d/%m/%Y}."))
+    else:
+        k3.metric("Días sin stock", "0")
+
+    if parecido:
+        E.nota("⚪ <b>Es prácticamente lo mismo que sugiere el modelo.</b>")
+    elif ev["perdida_extra"] <= 0:
+        E.nota(f"🟢 <b>Buena decisión:</b> compras {E.num(ev['compra_tuya'])} u. en vez de {E.num(ev['compra_sug'])}"
+               + (f" y ahorras <b>{E.clp(ev['ahorro_caja'])}</b>" if costo and ev["ahorro_caja"] > 0 else "")
+               + " sin quedarte sin stock.")
+    else:
+        perdida_txt = E.clp(ev["ventas_perdidas"]) + " en ventas" if precio else f"{E.num(ev['perdida_extra'])} u."
+        ahorro_txt = f"ahorras {E.clp(ev['ahorro_caja'])}, pero " if costo and ev["ahorro_caja"] > 0 else ""
+        if ev["ultimo_quiebre"] is not None and ev["ultimo_quiebre"] < pr["fecha"].iloc[-1]:
+            vuelta = f" Te recuperas el <b>{ev['ultimo_quiebre'] + pd.Timedelta(days=dias_p):%d/%m/%Y}</b>."
+        else:
+            # el pedido que te recupera puede llegar después del horizonte: se estima con el lead time
+            auto = sim_tuyo[(sim_tuyo["pedido"] > 0) & (sim_tuyo["pedido_manual"] <= 0) &
+                            (sim_tuyo.index >= auto_desde)]
+            if len(auto):
+                f_rec = auto["fecha"].iloc[0] + pd.Timedelta(days=float(np.ceil(d.L)) * dias_p)
+                vuelta = (f" Te recuperas cerca del <b>{f_rec:%d/%m/%Y}</b>, cuando llega el pedido que el modelo "
+                          f"hace el {auto['fecha'].iloc[0]:%d/%m/%Y}.")
+            else:
+                vuelta = " No alcanzas a recuperarte dentro del período analizado."
+        E.nota(f"🔴 <b>Ojo:</b> {ahorro_txt}te quedas sin stock {'al menos ' if al_final else ''}{E.num(dias_sin)} días "
+               "y pierdes "
+               f"<b>{perdida_txt}</b>.{vuelta}")
+
+    with st.expander("Ver comparación completa", icon=":material/table:"):
+        filas_c = [
+            ("Compra", f"{E.num(ev['compra_sug'])} u.", f"{E.num(ev['compra_tuya'])} u."),
+            ("Fecha de la compra", f"{f0:%d/%m/%Y}", f"{pr['fecha'].iloc[t_c]:%d/%m/%Y}"),
+            ("Llega", "", ""),
+            ("Días sin stock", E.num(ev["quiebres_sug"] * dias_p), E.num(ev["quiebres_tuyo"] * dias_p)),
+            ("Unidades sin vender", E.num(ev["perdida_sug"]), E.num(ev["perdida_tuya"])),
+            ("Inventario promedio", f"{E.num(ev['inv_prom_sug'])} u.", f"{E.num(ev['inv_prom_tuyo'])} u."),
+        ]
+        lle_s = sim_sug[(sim_sug["llegada"] > 0) & (sim_sug["fecha"] > f0)]
+        lle_t = sim_tuyo[(sim_tuyo["llegada"] > 0) & (sim_tuyo["fecha"] > pr["fecha"].iloc[t_c])]
+        filas_c[2] = ("Llega", f"{lle_s['fecha'].iloc[0]:%d/%m/%Y}" if len(lle_s) else "—",
+                      f"{lle_t['fecha'].iloc[0]:%d/%m/%Y}" if len(lle_t) else "—")
+        if costo:
+            filas_c.append(("Gasto en esta compra", E.clp(ev["gasto_sug"]), E.clp(ev["gasto_tuyo"])))
+        if precio:
+            filas_c.append(("Ventas perdidas", E.clp(ev["perdida_sug"] * precio), E.clp(ev["perdida_tuya"] * precio)))
+        st.dataframe(pd.DataFrame(filas_c, columns=["", "Sugerencia del modelo", "Tu plan"]),
+                     hide_index=True, width="stretch")
+        st.caption(f"Después de tu compra, el modelo vuelve a comprar solo desde el "
+                   f"{pr['fecha'].iloc[min(auto_desde, len(pr) - 1)]:%d/%m/%Y} (siguiente revisión). "
+                   "El ahorro es de caja: lo que no compras ahora se compra más adelante. La venta perdida no vuelve.")
 
 # ---------------------------------------------------------------- descarga
 exp = tabla.copy()
