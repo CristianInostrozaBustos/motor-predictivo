@@ -105,7 +105,8 @@ class SupabaseStorage:
     def __init__(self, url, key, bucket="motor", timeout=60):
         self.base = url.rstrip("/") + "/storage/v1"
         self.bucket = bucket
-        self.h = {"Authorization": f"Bearer {key}", "apikey": key}
+        # las claves nuevas (sb_secret_...) no son JWT: van solo en "apikey"; las antiguas (eyJ...) en ambos
+        self.h = {"apikey": key, **({"Authorization": f"Bearer {key}"} if key.startswith("eyJ") else {})}
         self.timeout = timeout
 
     def _url(self, ruta):

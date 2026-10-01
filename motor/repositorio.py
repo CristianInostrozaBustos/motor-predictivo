@@ -121,7 +121,8 @@ class SupabaseRepositorio:
 
     def __init__(self, url, key, timeout=30):
         self.base = url.rstrip("/") + "/rest/v1/pronosticos"
-        self.h = {"apikey": key, "Authorization": f"Bearer {key}", "Content-Type": "application/json"}
+        self.h = {"apikey": key, "Content-Type": "application/json",
+                  **({"Authorization": f"Bearer {key}"} if key.startswith("eyJ") else {})}
         self.timeout = timeout
 
     def _q(self, usuario, id_=None):
