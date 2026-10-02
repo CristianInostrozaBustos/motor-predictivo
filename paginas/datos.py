@@ -8,7 +8,6 @@ from motor import datos as D
 from motor import reglas as R
 
 E.encabezado(
-    "Paso 1",
     "Tus datos",
     "Sube tu historial de ventas o demanda en CSV o Excel. El sistema reconoce las columnas y deja todo listo para pronosticar.",
 )
