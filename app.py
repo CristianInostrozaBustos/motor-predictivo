@@ -1,5 +1,5 @@
+# Librerias
 import streamlit as st
-
 import cuenta
 import estilo as E
 import sesion as S
@@ -24,7 +24,7 @@ if S.modo_dev():
     secciones["Desarrollador"] = [st.Page("paginas/tecnico.py", title="Detalles técnicos")]
 
 st.logo("favicon.png", size="large")
-# Menú manual: la cuenta va debajo de Inicio
+
 pg = st.navigation([inicio] + [p for ps in secciones.values() for p in ps], position="hidden")
 with st.sidebar:
     st.page_link(inicio)
@@ -34,7 +34,7 @@ with st.sidebar:
         st.markdown(f'<div class="seccion-menu">{nombre}</div>', unsafe_allow_html=True)
         for p in ps:
             st.page_link(p)
-            # las vistas de la página abierta se despliegan bajo su enlace (acordeón)
+            
             if p.url_path == pg.url_path:
                 S.menu_vistas(p.url_path.split("/")[-1])
     st.divider()
