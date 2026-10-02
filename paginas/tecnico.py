@@ -96,14 +96,38 @@ if res is None:
     st.info("Todavía no se entrena un modelo para este dataset.")
     st.stop()
 
-st.markdown("## Búsqueda de ventana")
+st.markdown("## Búsqueda de ventana (LSTM)")
 st.caption(f"Ventana elegida: {res.ventana} {dp.freq_info['unidad_pl']} · épocas del modelo final: {res.epocas} · "
            f"tiempo total: {res.segundos:.0f} s")
 st.dataframe(res.busqueda.round(2), width="stretch", hide_index=True)
 
+st.markdown("## Modelos")
+torneo = getattr(res, "torneo", None)
+if torneo is None or torneo.empty:
+    st.caption("Este pronóstico se entrenó antes de comparar modelos: solo usa la LSTM.")
+else:
+    ganadores = pd.Series(res.motor_por_entidad).value_counts()
+    st.caption("Cada modelo pronostica el tramo de selección y se elige, por producto, el de menor WAPE. La combinación "
+               "promedia los dos mejores del producto. El bloque de prueba solo mide: no participa en la elección. "
+               "Elegidos: " + " · ".join(f"{m} {n}" for m, n in ganadores.items()) + ".")
+    elegido = torneo[torneo["elegido"]].set_index("entidad")["wape_prueba"]
+    lstm = torneo[torneo["motor"] == "LSTM"].set_index("entidad")["wape_prueba"]
+    t1, t2, t3 = st.columns(3)
+    t1.metric("WAPE en prueba · solo LSTM", E.pct(lstm.mean()))
+    t2.metric("WAPE en prueba · modelo elegido", E.pct(elegido.mean()),
+              delta=E.pct((elegido.mean() / lstm.mean() - 1) * 100) if lstm.mean() > 0 else None,
+              delta_color="inverse")
+    t3.metric("WAPE en prueba · sin modelo", E.pct(res.metricas_entidad["wape_naive"].mean()))
+    vista_t = st.segmented_control("Error", ["Prueba", "Selección"], default="Prueba", key="torneo_tramo")
+    col = "wape_prueba" if vista_t != "Selección" else "wape_seleccion"
+    tabla_t = torneo.pivot_table(index="entidad", columns="motor", values=col).round(1)
+    tabla_t.insert(0, "Elegido", pd.Series(res.motor_por_entidad))
+    st.dataframe(tabla_t.reset_index().rename(columns={"entidad": S.mayus(S.nombre_entidad(dp))}),
+                 width="stretch", hide_index=True)
+
 st.markdown("## Métricas en el bloque de prueba")
-st.caption("wape/mape/cobertura: pronóstico recursivo de todo el bloque (como se usa hacia el futuro). "
-           "mape_1paso: un período adelante con datos reales, comparable con la validación clásica.")
+st.caption("Del modelo elegido para cada producto. wape/mape/cobertura: pronóstico de todo el bloque (como se usa "
+           "hacia el futuro). mape_1paso: un período adelante con datos reales (solo cuando gana la LSTM).")
 st.dataframe(res.metricas_entidad.round(2), width="stretch", hide_index=True)
 
 h = res.historial_perdida
@@ -112,7 +136,7 @@ if h:
     fig.add_trace(go.Scatter(y=h["loss"], name="Entrenamiento", line=dict(color=E.AZUL)))
     if "val_loss" in h:
         fig.add_trace(go.Scatter(y=h["val_loss"], name="Selección", line=dict(color=E.NARANJO)))
-    fig.update_layout(title="Curva de pérdida del modelo final (pinball)", xaxis_title="Época", height=320)
+    fig.update_layout(title="Curva de pérdida de la LSTM final (pinball)", xaxis_title="Época", height=320)
     E.grafico(fig, key="fig_loss")
 
 st.markdown("## Indicadores disponibles")
