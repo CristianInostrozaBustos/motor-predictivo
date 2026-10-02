@@ -307,6 +307,10 @@ class ResultadoModelo:
     epocas: int
     segundos: float
     notas: list = field(default_factory=list)
+    torneo: pd.DataFrame | None = None          # entidad, motor, wape_seleccion, wape_prueba, elegido
+    motor_por_entidad: dict | None = None       # entidad -> motor ganador
+    futuro_torneo: dict | None = None           # entidad -> DataFrame(fecha, P10, P50, P90) hasta el horizonte máximo
+    factor_banda: dict | None = None            # entidad -> factor de calibración de la banda P10-P90
 
 
 def entrenar_motor(dp: DatasetPreparado, plan: PlanEntrenamiento, al_avance=None) -> ResultadoModelo:
@@ -326,40 +330,38 @@ def entrenar_motor(dp: DatasetPreparado, plan: PlanEntrenamiento, al_avance=None
 
     # ---------------- 1) búsqueda de ventana
     candidatas = list(plan.ventanas)
-    peso = 0.5 if len(candidatas) > 1 else 0.0
-    filas = []
-    if len(candidatas) > 1:
-        esc_b = EscaladorEntidad()
-        for e, s in series.items():
-            esc_b.ajustar(e, s.crudo[:ini_sel[e]])
-        for k, v in enumerate(candidatas):
-            base = peso * k / len(candidatas)
-            texto = f"Buscando la mejor configuración ({k + 1} de {len(candidatas)})"
-            avisar(base, texto)
-            fijar_semilla()
-            m = construir(plan.esquema, plan.arquitectura, v, n_entrada, len(ents))
-            compilar(m)
-            ts = time.time()
-            h = _entrenar(m, ventanas_entrenamiento(series, esc_b, ent_a_id, v, ini_sel), EPOCAS_BUSQUEDA,
-                          PACIENCIA_BUSQUEDA, max_muestras=MAX_MUESTRAS_BUSQUEDA,
-                          al_epoca=lambda ep, tot, b=base, t=texto: avisar(b + peso / len(candidatas) * ep / tot, t))
-            pr = _evaluar_tramo(m, esc_b, ent_a_id, v, series, ini_sel, V)
-            real = np.concatenate([series[e].crudo[ini_sel[e]:ini_sel[e] + V, 0] for e in ents])
-            p50 = np.concatenate([pr[e]["P50"] for e in ents])
-            p10 = np.concatenate([pr[e]["P10"] for e in ents])
-            p90 = np.concatenate([pr[e]["P90"] for e in ents])
-            filas.append(dict(ventana=v, wape=wape(real, p50), cobertura=cobertura(real, p10, p90),
-                              epocas=len(h["loss"]), segundos=round(time.time() - ts, 1)))
-            del m
-            keras.backend.clear_session()
-        busqueda = pd.DataFrame(filas)
-        mejor = busqueda["wape"].min()
-        # a igualdad práctica de error (menos de 2% relativo), gana la ventana más corta (modelo más simple)
-        ventana = int(busqueda[busqueda["wape"] <= mejor * 1.02].sort_values("ventana").iloc[0]["ventana"])
-        busqueda["elegida"] = busqueda["ventana"] == ventana
-    else:
-        ventana = candidatas[0]
-        busqueda = pd.DataFrame([dict(ventana=ventana, wape=np.nan, cobertura=np.nan, epocas=0, segundos=0.0, elegida=True)])
+    peso = 0.4 if len(candidatas) > 1 else 0.1
+    filas, seleccion_lstm = [], {}
+    # la búsqueda corre siempre: deja el pronóstico de la LSTM en el tramo de selección para el torneo
+    esc_b = EscaladorEntidad()
+    for e, s in series.items():
+        esc_b.ajustar(e, s.crudo[:ini_sel[e]])
+    for k, v in enumerate(candidatas):
+        base = peso * k / len(candidatas)
+        texto = f"Buscando la mejor configuración ({k + 1} de {len(candidatas)})"
+        avisar(base, texto)
+        fijar_semilla()
+        m = construir(plan.esquema, plan.arquitectura, v, n_entrada, len(ents))
+        compilar(m)
+        ts = time.time()
+        h = _entrenar(m, ventanas_entrenamiento(series, esc_b, ent_a_id, v, ini_sel), EPOCAS_BUSQUEDA,
+                      PACIENCIA_BUSQUEDA, max_muestras=MAX_MUESTRAS_BUSQUEDA,
+                      al_epoca=lambda ep, tot, b=base, t=texto: avisar(b + peso / len(candidatas) * ep / tot, t))
+        pr = _evaluar_tramo(m, esc_b, ent_a_id, v, series, ini_sel, V)
+        seleccion_lstm[v] = pr
+        real = np.concatenate([series[e].crudo[ini_sel[e]:ini_sel[e] + V, 0] for e in ents])
+        p50 = np.concatenate([pr[e]["P50"] for e in ents])
+        p10 = np.concatenate([pr[e]["P10"] for e in ents])
+        p90 = np.concatenate([pr[e]["P90"] for e in ents])
+        filas.append(dict(ventana=v, wape=wape(real, p50), cobertura=cobertura(real, p10, p90),
+                          epocas=len(h["loss"]), segundos=round(time.time() - ts, 1)))
+        del m
+        keras.backend.clear_session()
+    busqueda = pd.DataFrame(filas)
+    mejor = busqueda["wape"].min()
+    # a igualdad práctica de error (menos de 2% relativo), gana la ventana más corta (modelo más simple)
+    ventana = int(busqueda[busqueda["wape"] <= mejor * 1.02].sort_values("ventana").iloc[0]["ventana"])
+    busqueda["elegida"] = busqueda["ventana"] == ventana
 
     # ---------------- 2) modelo final (entrenamiento + selección) y prueba
     texto = f"Entrenando el modelo final (ventana de {ventana} {fi['unidad_pl']})"
@@ -371,9 +373,9 @@ def entrenar_motor(dp: DatasetPreparado, plan: PlanEntrenamiento, al_avance=None
     modelo = construir(plan.esquema, plan.arquitectura, ventana, n_entrada, len(ents))
     compilar(modelo)
     hist = _entrenar(modelo, ventanas_entrenamiento(series, esc, ent_a_id, ventana, ini_prueba), EPOCAS_FINAL,
-                     PACIENCIA_FINAL, al_epoca=lambda ep, tot: avisar(peso + (0.95 - peso) * ep / tot, texto))
+                     PACIENCIA_FINAL, al_epoca=lambda ep, tot: avisar(peso + (0.78 - peso) * ep / tot, texto))
 
-    avisar(0.96, "Midiendo la precisión")
+    avisar(0.79, "Midiendo la precisión")
     pr = _evaluar_tramo(modelo, esc, ent_a_id, ventana, series, ini_prueba, V)
     # un paso adelante (con datos reales en la ventana), comparable con la validación clásica
     X1, e1 = [], []
@@ -401,11 +403,100 @@ def entrenar_motor(dp: DatasetPreparado, plan: PlanEntrenamiento, al_avance=None
 
     exog_nombres = dp.variables_modelo[1:]
     exog_ultimo = {e: {v: float(series[e].crudo[-1, j + 1]) for j, v in enumerate(exog_nombres)} for e in ents}
+    res = ResultadoModelo(modelo=modelo, plan=plan, ventana=ventana, escalador=esc, ent_a_id=ent_a_id,
+                          series=series, exog_nombres=exog_nombres, exog_ultimo=exog_ultimo, busqueda=busqueda,
+                          metricas_entidad=metricas, backtest=backtest, historial_perdida=hist,
+                          epocas=len(hist["loss"]), segundos=0.0)
+    avisar(0.8, "Comparando con otros modelos de pronóstico")
+    _torneo(res, ini_sel, ini_prueba, seleccion_lstm[ventana], avisar)
+    res.segundos = round(time.time() - t0, 1)
     avisar(1.0, "Listo")
-    return ResultadoModelo(modelo=modelo, plan=plan, ventana=ventana, escalador=esc, ent_a_id=ent_a_id,
-                           series=series, exog_nombres=exog_nombres, exog_ultimo=exog_ultimo, busqueda=busqueda,
-                           metricas_entidad=metricas, backtest=backtest, historial_perdida=hist,
-                           epocas=len(hist["loss"]), segundos=round(time.time() - t0, 1))
+    return res
+
+
+# ---------------------------------------------------------------- torneo de motores
+
+def _torneo(res: ResultadoModelo, ini_sel, ini_prueba, seleccion_lstm, avisar):
+    """Compite la LSTM con los motores de la industria producto a producto (tramo de selección) y deja en el
+    resultado la prueba y el pronóstico futuro del ganador de cada uno."""
+    from . import motores as MT
+    plan, series, V = res.plan, res.series, res.plan.validacion
+    ents, freq = list(series), plan.frecuencia
+    intermit = MT.intermitentes(series, ents)
+    nombres = MT.motores_estadisticos(series, ents)
+    sel, prueba = {MT.LSTM: seleccion_lstm}, {MT.LSTM: {e: {q: res.backtest[e][q].to_numpy() for q in
+                                                            ("P10", "P50", "P90")} for e in ents}}
+    for nombre_corte, corte, destino, avance in (("seleccion", ini_sel, sel, 0.84), ("prueba", ini_prueba, prueba, 0.9)):
+        try:
+            destino.update(MT.estadisticos(series, ents, freq, corte, V, nombres))
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            destino["LightGBM"] = MT.lightgbm(series, ents, freq, corte, V)
+        except Exception:  # noqa: BLE001
+            pass
+        avisar(avance, "Comparando con otros modelos de pronóstico")
+
+    def de(dic, motor, e, par):
+        if motor == MT.COMBINACION:
+            a, b = de(dic, par[0], e, None), de(dic, par[1], e, None)
+            return MT.combinar(a, b) if a is not None and b is not None else None
+        return dic.get(motor, {}).get(e)
+
+    filas, ganadores, pares, k_banda = [], {}, {}, {}
+    for e in ents:
+        real_sel = series[e].crudo[ini_sel[e]:ini_sel[e] + V, 0]
+        real_pr = series[e].crudo[ini_prueba[e]:ini_prueba[e] + V, 0]
+        cand = {m: d[e] for m, d in sel.items() if e in d and (m not in ("Croston", "TSB") or e in intermit)}
+        cand = {m: p for m, p in cand.items() if m == MT.LSTM or e in prueba.get(m, {})}
+        ganador, errores, par = MT.elegir(cand, real_sel)
+        ganadores[e], pares[e] = ganador, par
+        for m, w in errores.items():
+            p = de(prueba, m, e, par)
+            filas.append(dict(entidad=e, motor=m, wape_seleccion=w,
+                              wape_prueba=MT.wape(real_pr, p["P50"]) if p is not None else np.nan, elegido=m == ganador))
+        k_banda[e] = MT.factor_banda(de(sel, ganador, e, par), real_sel)
+        p = MT.escalar_banda(de(prueba, ganador, e, par), k_banda[e])
+        bt = res.backtest[e]
+        for q in ("P10", "P50", "P90"):
+            bt[q] = p[q]
+        fila_m = res.metricas_entidad["entidad"] == e
+        res.metricas_entidad.loc[fila_m, "wape"] = wape(real_pr, p["P50"])
+        res.metricas_entidad.loc[fila_m, "mape"] = mape(real_pr, p["P50"])
+        res.metricas_entidad.loc[fila_m, "cobertura"] = cobertura(real_pr, p["P10"], p["P90"])
+        if ganador != MT.LSTM:
+            res.metricas_entidad.loc[fila_m, "mape_1paso"] = np.nan
+
+    # pronóstico futuro de los ganadores que no son la LSTM (con toda la historia)
+    h = plan.horizonte_max
+    necesarios = {m for e in ents for m in ((pares[e] or ()) if ganadores[e] == MT.COMBINACION else (ganadores[e],))}
+    fin = {e: len(series[e].fechas) for e in ents}
+    futuro = {}
+    estad = [m for m in necesarios if m in nombres]
+    if estad:
+        futuro.update(MT.estadisticos(series, ents, freq, fin, h, estad))
+    if "LightGBM" in necesarios:
+        fq = FRECUENCIAS[freq]["pandas"]
+        exf = {e: _exogenas_futuras(res, e, pd.date_range(series[e].fechas[-1], periods=h + 1, freq=fq)[1:])
+               for e in ents}
+        futuro["LightGBM"] = MT.lightgbm(series, ents, freq, fin, h, exf)
+    if MT.LSTM in necesarios:
+        lstm = pronosticar(res, h, freq, solo_lstm=True)
+        futuro[MT.LSTM] = {e: {q: lstm[e][q].to_numpy() for q in ("P10", "P50", "P90")} for e in ents}
+    res.futuro_torneo = {}
+    for e in ents:
+        if ganadores[e] == MT.LSTM:
+            continue
+        p = de(futuro, ganadores[e], e, pares[e])
+        if p is None:
+            ganadores[e] = MT.LSTM
+            continue
+        p = MT.escalar_banda(p, k_banda[e])
+        fechas = pd.date_range(series[e].fechas[-1], periods=h + 1, freq=FRECUENCIAS[freq]["pandas"])[1:]
+        res.futuro_torneo[e] = pd.DataFrame({"fecha": fechas, **p})
+    res.motor_por_entidad = ganadores
+    res.factor_banda = k_banda
+    res.torneo = pd.DataFrame(filas)
 
 
 # ---------------------------------------------------------------- pronóstico futuro
@@ -427,7 +518,8 @@ def _exogenas_futuras(res: ResultadoModelo, e, fechas_fut):
     return np.column_stack(cols).astype("float32") if cols else np.zeros((len(fechas_fut), 0), "float32")
 
 
-def pronosticar(res: ResultadoModelo, horizonte: int, freq: str, cambios=None, entidades=None) -> dict:
+def pronosticar(res: ResultadoModelo, horizonte: int, freq: str, cambios=None, entidades=None,
+                solo_lstm: bool = False) -> dict:
     """dict entidad -> DataFrame(fecha, P10, P50, P90) con `horizonte` períodos desde el fin del historial.
 
     cambios (opcional, para escenarios): lista de dicts con
@@ -436,6 +528,8 @@ def pronosticar(res: ResultadoModelo, horizonte: int, freq: str, cambios=None, e
         tipo: "pct" (multiplica por 1 + valor) o "fijar" (reemplaza por valor)
         valor: número
     entidades (opcional): solo pronostica esas entidades.
+    Cada entidad usa el motor que ganó el torneo. Los escenarios con cambios en exógenas se aplican como la razón
+    entre la LSTM con y sin cambios (los motores estadísticos no usan exógenas).
     """
     fq = FRECUENCIAS[freq]["pandas"]
     ctx, exf, calf, fechas = {}, {}, {}, {}
@@ -456,5 +550,26 @@ def pronosticar(res: ResultadoModelo, horizonte: int, freq: str, cambios=None, e
         exf[e] = ex
         calf[e] = calendario(ff, freq)
     pr = recursivo(res.modelo, res.escalador, res.ent_a_id, res.ventana, ctx, exf, calf, horizonte)
-    return {e: pd.DataFrame({"fecha": fechas[e], "P10": pr[e]["P10"], "P50": pr[e]["P50"], "P90": pr[e]["P90"]})
-            for e in ctx}
+    out = {e: pd.DataFrame({"fecha": fechas[e], "P10": pr[e]["P10"], "P50": pr[e]["P50"], "P90": pr[e]["P90"]})
+           for e in ctx}
+    futuro = getattr(res, "futuro_torneo", None) or {}
+    k_banda = getattr(res, "factor_banda", None) or {}
+    if solo_lstm or getattr(res, "motor_por_entidad", None) is None:
+        return out
+    from . import motores as MT
+    for e in out:
+        if e not in futuro and e in k_banda:
+            p = MT.escalar_banda({q: out[e][q].to_numpy() for q in ("P10", "P50", "P90")}, k_banda[e])
+            out[e] = pd.DataFrame({"fecha": out[e]["fecha"], **p})
+    otros = [e for e in out if e in futuro]
+    base_lstm = pronosticar(res, horizonte, freq, entidades=otros, solo_lstm=True) if (cambios and otros) else None
+    for e in otros:
+        f = futuro[e].iloc[:horizonte].reset_index(drop=True)
+        if len(f) < horizonte:
+            f = pd.concat([f, out[e].iloc[len(f):].reset_index(drop=True)], ignore_index=True)
+        if base_lstm is not None:
+            razon = (out[e]["P50"] / base_lstm[e]["P50"].replace(0, np.nan)).fillna(1.0).clip(0, 10).to_numpy()
+            f[["P10", "P50", "P90"]] = f[["P10", "P50", "P90"]].to_numpy() * razon[:, None]
+        f["fecha"] = out[e]["fecha"].to_numpy()
+        out[e] = f[["fecha", "P10", "P50", "P90"]]
+    return out

@@ -10,9 +10,9 @@ st.markdown(
     <div class="hero">
       <div class="eyebrow">{E.NOMBRE_APP}</div>
       <h1>Pronostica la demanda, decide cuánto abastecer y mide su impacto en plata</h1>
-      <p>Sube tu historial de ventas o demanda. El motor detecta la estructura de los datos, elige solo cómo
-      entrenar una red LSTM según cuántos datos tienes y entrega pronósticos con rango de incertidumbre,
-      política de inventario, su impacto financiero y escenarios what-if.</p>
+      <p>Sube tu historial de ventas o demanda. El motor detecta la estructura de los datos, compara varios
+      modelos de pronóstico y se queda con el mejor para cada producto, y entrega pronósticos con rango de
+      incertidumbre, política de inventario, su impacto financiero y escenarios what-if.</p>
       <div class="chips">
         <span class="chip">CSV o Excel</span>
         <span class="chip">Diario, semanal o mensual</span>
