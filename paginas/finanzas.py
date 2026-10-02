@@ -21,7 +21,7 @@ nom = S.mayus(S.nombre_entidad(dp))
 dias_p = fi["dias"]
 
 vista = S.vista("finanzas")
-E.titulo_compacto("Paso 4 · Finanzas", S.etiqueta_vista(vista))
+E.titulo_compacto("Finanzas", S.etiqueta_vista(vista))
 val = S.valores(dp)
 
 
