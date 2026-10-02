@@ -1,23 +1,4 @@
-"""Almacenamiento de archivos: modelos entrenados y archivos de datos de los usuarios.
-
-Todo vive en un solo lugar (un bucket de Supabase Storage o una carpeta local) organizado por rutas:
-
-    modelos/<version>_<huella>.zip        modelos entrenados (compartidos: misma huella = mismos datos)
-    datos/<usuario>/<id_pronostico>.bin    archivo original que subió un usuario con sesión iniciada
-
-Cada modelo se guarda como un .zip con:
-    modelo.keras   la red entrenada
-    meta.pkl       todo lo demás del ResultadoModelo (escalador, series, métricas, plan...)
-    version.txt    versión del motor; si no coincide, el modelo se ignora y se vuelve a entrenar
-
-Configuración en los secrets del sitio (sin ella se usa la carpeta local almacen_local/):
-
-    [almacen]
-    tipo = "supabase"
-    url = "https://xxxx.supabase.co"
-    key = "service_role key"
-    bucket = "motor"
-"""
+#Almacenamiento de archivos: Supabase, todo lo guardado queda en un archivo zip.
 
 from __future__ import annotations
 
@@ -30,7 +11,7 @@ import zipfile
 
 import requests
 
-VERSION_MOTOR = "m1"          # subir cuando cambie la arquitectura o el formato guardado
+VERSION_MOTOR = "m1"
 MAX_MODELOS_LOCALES = 40
 
 
@@ -42,7 +23,7 @@ def ruta_datos(usuario_id: str, id_pronostico: str) -> str:
     return f"datos/{usuario_id}/{id_pronostico}.bin"
 
 
-# ---------------------------------------------------------------- lugares de guardado
+# carpetas de guardado
 
 class CarpetaLocal:
     nombre = "carpeta local"
@@ -93,7 +74,7 @@ class CarpetaLocal:
         return out
 
     def uso_total(self):
-        """Bytes ocupados por todos los archivos guardados."""
+        #memoria usada
         total = 0
         for raiz, _, archivos in os.walk(self.raiz if hasattr(self, "raiz") else self._p("")):
             total += sum(os.path.getsize(os.path.join(raiz, f)) for f in archivos)
@@ -112,7 +93,7 @@ class SupabaseStorage:
     def __init__(self, url, key, bucket="motor", timeout=60):
         self.base = url.rstrip("/") + "/storage/v1"
         self.bucket = bucket
-        # las claves nuevas (sb_secret_...) no son JWT: van solo en "apikey"; las antiguas (eyJ...) en ambos
+        
         self.h = {"apikey": key, **({"Authorization": f"Bearer {key}"} if key.startswith("eyJ") else {})}
         self.timeout = timeout
 
@@ -160,7 +141,7 @@ def _uso_supabase(self, prefijo="", nivel=0):
 
 
 SupabaseStorage.uso_total = _uso_supabase
-SupabaseStorage.limite_bytes = 1024 ** 3          # plan gratis de Supabase: 1 GB de archivos
+SupabaseStorage.limite_bytes = 1024 ** 3
 
 
 def crear(config: dict | None):
@@ -170,7 +151,7 @@ def crear(config: dict | None):
     return CarpetaLocal(config.get("ruta", "almacen_local"))
 
 
-# ---------------------------------------------------------------- modelos
+# modelos
 
 def a_bytes(res) -> bytes:
     modelo = res.modelo
@@ -201,14 +182,14 @@ def a_bytes(res) -> bytes:
 
 def desde_bytes(contenido: bytes):
     from tensorflow import keras
-    from . import modelo as M  # registra la capa SeleccionarPorEntidad
+    from . import modelo as M
 
     with zipfile.ZipFile(io.BytesIO(contenido)) as z:
         if z.read("version.txt").decode() != VERSION_MOTOR:
             return None
         meta = z.read("meta.pkl")
         bytes_modelo = z.read("modelo.keras")
-    res = pickle.loads(meta)  # solo se leen archivos que escribió el propio sitio
+    res = pickle.loads(meta)
     with tempfile.TemporaryDirectory() as d:
         ruta = os.path.join(d, "modelo.keras")
         with open(ruta, "wb") as fh:
