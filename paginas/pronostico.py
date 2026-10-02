@@ -15,7 +15,7 @@ H = S.horizonte()
 obj = dp.etiquetas["objetivo"]
 
 vista = S.vista("pronostico")
-E.titulo_compacto("Paso 2 · Pronóstico", S.etiqueta_vista(vista))
+E.titulo_compacto("Pronóstico", S.etiqueta_vista(vista))
 nom_col = S.mayus(S.nombre_entidad(dp))
 met = res.metricas_entidad.set_index("entidad")
 
