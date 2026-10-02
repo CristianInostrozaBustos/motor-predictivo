@@ -477,7 +477,7 @@ def selector_vista(entidades, dp, key):
     st.session_state["vista_sel"] = previa
     kw_sel = f"_vs_{key}"
     st.session_state[kw_sel] = previa
-    etiqueta = f"{mayus(nombre_entidad(dp, True))}"
+    etiqueta = f"{mayus(nombre_entidad(dp))}"
     if len(entidades) <= MAX_BOTONES:
         st.pills(etiqueta, entidades, selection_mode="multi", key=kw_sel, on_change=_sync_vista, args=(kw_sel,))
     else:
