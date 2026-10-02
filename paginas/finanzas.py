@@ -21,7 +21,7 @@ nom = S.mayus(S.nombre_entidad(dp))
 dias_p = fi["dias"]
 
 vista = S.vista("finanzas")
-E.titulo_compacto("Paso 4 · Finanzas", vista)
+E.titulo_compacto("Paso 4 · Finanzas", S.etiqueta_vista(vista))
 val = S.valores(dp)
 
 
@@ -55,7 +55,8 @@ def precio_y_costo(ent):
              and val.loc[e, "costo"] >= val.loc[e, "precio"]]
     if raros:
         st.caption(f":material/warning: En {', '.join(map(str, raros[:5]))} el costo es igual o mayor que el precio: "
-                   "probablemente es el precio de un insumo. El margen de esos productos no se calcula.")
+                   f"probablemente es el precio de un insumo. El margen de {'esas' if S.es_femenino(dp) else 'esos'} "
+                   f"{S.nombre_entidad(dp, True)} no se calcula.")
 
 
 def comparar_productos(ent):

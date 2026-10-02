@@ -51,7 +51,7 @@ def costo_alternativo_detectado(e):
     return None
 
 vista_pag = S.vista("escenarios")
-E.titulo_compacto("Paso 5 · Escenarios: ¿qué pasa si…?", vista_pag)
+E.titulo_compacto("Paso 5 · Escenarios: ¿qué pasa si…?", S.etiqueta_vista(vista_pag))
 
 import cuenta  # noqa: E402
 
@@ -150,7 +150,7 @@ with st.container(border=True, key="panel_control_esc"):
                     if como == "%":
                         v = st.slider("Cambio de precio (%)", -50, 50, 15, 5, key="esc_pre")
                         if not ref_p and len(entidades) > 1:
-                            st.caption("Para ingresar el precio en pesos, elige un " + S.nombre_entidad(dp) +
+                            st.caption("Para ingresar el precio en pesos, elige " + S.un_entidad(dp) +
                                        " en «Afecta a».")
                     else:
                         nuevo = st.number_input(f"Precio nuevo de {alc} ($)", 1.0, None, float(round(ref_p * 1.15)),
@@ -248,7 +248,7 @@ descripcion = " + ".join(
     for ev in esc.eventos)
 st.markdown(f"### Resultado · {descripcion}")
 st.caption(f"Del {f_ini:%d/%m/%Y} al {f_fin:%d/%m/%Y} · "
-           + (f"todas las {S.nombre_entidad(dp, True)}" if len(afectadas) > 1 else afectadas[0])
+           + (S.todos_entidad(dp) if len(afectadas) > 1 else afectadas[0])
            + f" · análisis sobre {H_an} {u_pl} · nivel de servicio {nivel}")
 
 if not hay_inv:
@@ -407,7 +407,7 @@ elif vista_pag == "Inventario":
                      column_config={k: st.column_config.NumberColumn(format="%.0f") for k in ("Actual", "Con el evento")})
 
 if vista_pag == "Inventario" and len(afectadas) > 1:
-    st.markdown(f"#### Todos los {S.nombre_entidad(dp, True)} afectados")
+    st.markdown(f"#### {S.mayus(S.todos_entidad(dp))} afectad{'as' if S.es_femenino(dp) else 'os'}")
     st.dataframe(tabla.sort_values(f"{u_pl.capitalize()} extra sin stock, sin ajustar", ascending=False) if hay_inv else tabla,
                  width="stretch", hide_index=True, column_config={
                      "Demanda en el evento": st.column_config.NumberColumn(format="%+.1f%%"),
@@ -427,13 +427,13 @@ if vista_pag == "Impacto en dinero" and S.precio(ent):
         st.caption(f"Por defecto se usan los valores de {ent} de la página Finanzas. Puedes probar otros aquí.")
         precio_ent = st.number_input("Precio de venta por unidad ($)", 0.0, None, float(round(precio_arch or 0)), 10.0,
                                      format="%.0f", key=f"precio_din_{ent}") or None
-        costo_ent = st.number_input("Costo por unidad del producto ($)", 0.0, None, float(round(costo_arch or 0)), 10.0,
+        costo_ent = st.number_input("Costo por unidad ($)", 0.0, None, float(round(costo_arch or 0)), 10.0,
                                     format="%.0f", key=f"costo_din_{ent}",
                                     help="Lo que te cuesta cada unidad que vendes. Déjalo en 0 si no lo sabes.") or None
     if costo_ent and precio_ent and costo_ent >= precio_ent:
         E.nota(f"El costo por unidad ({E.clp(costo_ent)}) es igual o mayor que el precio de venta ({E.clp(precio_ent)}). "
                "Probablemente la columna marcada como costo es el precio de un insumo (por ejemplo, por kilo) y no el costo "
-               "de una unidad del producto. El margen se omite: ingresa el costo real en <b>Precio y costo usados</b>.")
+               f"de una unidad de {ent}. El margen se omite: ingresa el costo real en <b>Precio y costo usados</b>.")
         costo_ent = None
     din = X.impacto_dinero(c, esc, precio_ent, costo_ent, costo_arch)
     if din is None:

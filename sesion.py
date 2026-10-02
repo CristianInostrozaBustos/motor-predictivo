@@ -2,6 +2,7 @@
 
 import hashlib
 import os
+import re
 
 import pandas as pd
 import streamlit as st
@@ -249,7 +250,8 @@ def menu_vistas(pagina):
         st.session_state[estado] = st.session_state[kw]
 
     with st.container(key=f"vistas_{pagina}"):
-        st.radio("Qué ver", opciones, key=kw, on_change=_sync, label_visibility="collapsed")
+        st.radio("Qué ver", opciones, key=kw, on_change=_sync, label_visibility="collapsed",
+                 format_func=etiqueta_vista)
 
 
 # ---------------------------------------------------------------- valores ($) por producto
@@ -359,20 +361,80 @@ def politica_actual(dp, entidades):
 
 # ---------------------------------------------------------------- UI compartida
 
-def nombre_entidad(dp, plural=False):
-    et = dp.etiquetas.get("entidad", "")
+_INGLES = {"store": "tienda", "shop": "tienda", "product": "producto", "item": "producto", "branch": "sucursal",
+           "category": "categoría", "customer": "cliente", "client": "cliente", "warehouse": "bodega",
+           "brand": "marca", "supplier": "proveedor", "location": "ubicación", "site": "local"}
+_RELLENO = {"id", "cod", "codigo", "código", "nombre", "name", "nro", "num", "número", "numero", "de", "del", "code"}
+_FEMENINOS = {"sucursal", "sede", "red", "clase", "serie", "base", "parte", "flor", "llave", "calle", "fuente"}
+_MASCULINOS_EN_A = {"día", "dia", "mapa", "sistema", "problema", "clima", "programa", "tema", "idioma"}
+
+
+def nombre_sugerido(et):
+    """Nombre de cada serie deducido de la etiqueta de la columna de entidades: id_tienda -> tienda."""
     if et == "(una sola serie)" or not et:
-        return "series" if plural else "serie"
-    et = et.strip()
-    for sufijo in (" ID", " id", " código", " Código", " cod"):
-        if et.endswith(sufijo) and len(et) > len(sufijo):
-            et = et[: -len(sufijo)]
-    et = et if et.isupper() else et.lower()
-    if plural:
-        if et.isupper():
-            return et + "s"
-        return et if et.endswith("s") else et + ("es" if et[-1] in "rlnd" else "s")
-    return et
+        return "serie"
+    palabras = [w for w in re.split(r"[\s_\-\.]+", str(et).strip()) if w]
+    utiles = list(palabras)
+    while len(utiles) > 1 and utiles[0].lower() in _RELLENO:
+        utiles.pop(0)
+    while len(utiles) > 1 and utiles[-1].lower() in _RELLENO:
+        utiles.pop()
+    et = " ".join(utiles)
+    et = _INGLES.get(et.lower(), et)
+    return et if et.isupper() else et.lower()
+
+
+def _plural_palabra(w):
+    if w.isupper():
+        return w + "s"
+    if w[-1] in "sx":
+        return w
+    if w[-1] in "aeiouáéó":
+        return w + "s"
+    if w.endswith("z"):
+        return w[:-1] + "ces"
+    if re.search(r"[áéíóú]n$", w):
+        return w[:-2] + {"á": "a", "é": "e", "í": "i", "ó": "o", "ú": "u"}[w[-2]] + "nes"
+    return w + "es"
+
+
+def nombre_entidad(dp, plural=False):
+    """Cómo se llama cada serie (SKU, tienda, bebida…): lo que indicó el usuario o lo deducido de la columna."""
+    alias = ((st.session_state.get("config_actual") or {}).get("nombre_serie") or "").strip()
+    et = alias or nombre_sugerido(dp.etiquetas.get("entidad", ""))
+    if not et.isupper():
+        et = et[:1].lower() + et[1:]
+    if not plural:
+        return et
+    partes = et.split(" ", 1)
+    return " ".join([_plural_palabra(partes[0])] + partes[1:])
+
+
+def es_femenino(dp):
+    w = nombre_entidad(dp).split(" ")[0]
+    if w.isupper() or w.lower() in _MASCULINOS_EN_A:
+        return False
+    return w.lower() in _FEMENINOS or w.endswith(("a", "ión", "dad", "tad", "tud", "umbre", "ie"))
+
+
+def un_entidad(dp):
+    return ("una " if es_femenino(dp) else "un ") + nombre_entidad(dp)
+
+
+def todos_entidad(dp):
+    return ("todas las " if es_femenino(dp) else "todos los ") + nombre_entidad(dp, True)
+
+
+def etiqueta_vista(v, dp=None):
+    """Nombre visible de una vista: las que hablan de los productos usan el nombre real de las series."""
+    dp = dp or st.session_state.get("dp")
+    if dp is None:
+        return v
+    if v == "Todos los productos":
+        return mayus(todos_entidad(dp))
+    if v == "Comparar productos":
+        return "Comparar " + nombre_entidad(dp, True)
+    return v
 
 
 MAX_SERIES = 8
@@ -423,7 +485,7 @@ def selector_vista(entidades, dp, key):
                        args=(kw_sel,), placeholder=f"Elige hasta {MAX_SERIES}")
     elegidas = [e for e in entidades if e in (st.session_state.get(kw_sel) or [])]
     if not elegidas:
-        st.caption(f":material/info: Elige al menos un {nombre_entidad(dp)}. Mientras tanto se muestra el primero.")
+        st.caption(f":material/info: Elige al menos {un_entidad(dp)}. Mientras tanto se muestra el primero.")
         elegidas = _por_volumen(dp, entidades)[:1]
     return elegidas
 
@@ -612,6 +674,7 @@ def abrir_pronostico(reg, progreso=None):
     for campo, llave in (("exogenas", "exog"), ("frecuencia", "freq"), ("relleno", "relleno"), ("negativos", "neg")):
         if campo in cfg:
             st.session_state[f"{llave}_{k}"] = cfg[campo]
+    st.session_state[f"serie_{k}"] = cfg.get("nombre_serie") or ""
 
     dp = preparar_cacheado(df, tuple(sorted(roles.items())), tuple(cfg.get("exogenas", [])), cfg.get("frecuencia", "D"),
                            cfg.get("relleno", "interpolar"), cfg.get("negativos", True))

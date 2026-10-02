@@ -20,7 +20,7 @@ n_ent = dp.df["entidad"].nunique()
 df = dp.df
 
 vista = S.vista("analisis")
-E.titulo_compacto("Explorar · Análisis de tus datos", vista)
+E.titulo_compacto("Explorar · Análisis de tus datos", S.etiqueta_vista(vista))
 elegidas = [vista]
 no_disp = []
 if not dp.tiene("promocion"):
@@ -95,7 +95,7 @@ if "Ranking ABC" in elegidas:
                           yaxis_ticksuffix="%", height=360, showlegend=False, hovermode="closest")
         E.grafico(fig, key="fig_abc")
     c = abc["clase"].value_counts()
-    E.nota(f"Clase A: <b>{c.get('A', 0)}</b> {S.nombre_entidad(dp)}(s) concentran el 80% de los {medida}. "
+    E.nota(f"Clase A: <b>{c.get('A', 0)}</b> {S.nombre_entidad(dp, c.get('A', 0) != 1)} concentran el 80% de los {medida}. "
            f"Clase B: {c.get('B', 0)} · Clase C: {c.get('C', 0)}.")
 
 # ---------------------------------------------------------------- promociones

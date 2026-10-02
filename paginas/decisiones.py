@@ -34,7 +34,7 @@ for e in entidades:
     param[e] = {"lt": float(lt), "inv": inv}
 
 vista = S.vista("decisiones")
-E.titulo_compacto("Paso 3 · Decisiones de abastecimiento", vista)
+E.titulo_compacto("Paso 3 · Decisiones de abastecimiento", S.etiqueta_vista(vista))
 
 # ---------------------------------------------------------------- producto y panel de control (sobre el gráfico)
 ent = S.selector_entidad(entidades, dp, key="dec")

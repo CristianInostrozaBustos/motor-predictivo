@@ -59,6 +59,13 @@ with st.expander("Revisar columnas detectadas", icon=":material/view_column:", e
         sel = col.selectbox(D.ROLES[rol]["etiqueta"], opciones, index=opciones.index(d) if d in opciones else 0,
                             key=f"rol_{rol}_{k}")
         roles[rol] = None if sel == NINGUNA else sel
+    nombre_serie = ""
+    if roles.get("entidad"):
+        c1, _ = st.columns([1, 2])
+        nombre_serie = c1.text_input("¿Cómo se llama cada uno?", key=f"serie_{k}", max_chars=30,
+                                     placeholder=S.nombre_sugerido(D.nombre_legible(roles["entidad"])),
+                                     help="Se usa en los títulos y selectores del sitio, por ejemplo SKU, tienda, "
+                                          "bebida o sucursal. Si lo dejas vacío se usa el nombre de la columna.")
     st.caption("Opcionales: si tu archivo las tiene, el sistema las usa para mejorar el pronóstico y las decisiones.")
     cols = st.columns(3)
     for i, rol in enumerate(["precio", "promocion", "lead_time", "inventario", "quiebre", "costo_unitario"]):
@@ -108,7 +115,7 @@ except Exception as e:  # noqa: BLE001
     st.stop()
 st.session_state["dp"] = dp
 st.session_state["config_actual"] = dict(roles=roles, exogenas=list(exogenas), frecuencia=frecuencia, relleno=relleno,
-                                         negativos=bool(negativos))
+                                         negativos=bool(negativos), nombre_serie=nombre_serie.strip())
 plan = R.planificar(dp)
 fi = dp.freq_info
 n_ent = dp.df["entidad"].nunique()
@@ -170,6 +177,7 @@ with st.container(border=True):
     else:
         st.session_state["horizonte"] = h
         S.actualizar_registro(horizonte=int(h))
+        S.actualizar_registro(config=st.session_state["config_actual"])
         origen = st.session_state["resultado"].get("origen")
         import cuenta
         error_guardado = S.guardar_pronostico_actual()
