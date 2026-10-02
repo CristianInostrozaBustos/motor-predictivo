@@ -51,7 +51,7 @@ def costo_alternativo_detectado(e):
     return None
 
 vista_pag = S.vista("escenarios")
-E.titulo_compacto("Paso 5 · Escenarios: ¿qué pasa si…?", S.etiqueta_vista(vista_pag))
+E.titulo_compacto("Escenarios", S.etiqueta_vista(vista_pag))
 
 import cuenta  # noqa: E402
 
