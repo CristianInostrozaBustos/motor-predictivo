@@ -388,8 +388,16 @@ def _por_volumen(dp, entidades):
     return [e for e in vol.sort_values(ascending=False).index if e in entidades]
 
 
-def _sync(clave_widget, clave_estado):
-    st.session_state[clave_estado] = st.session_state[clave_widget]
+def _sync_vista(clave_widget):
+    """Guarda la selección múltiple y deja como producto activo el último que se agregó."""
+    antes = list(st.session_state.get("vista_sel", []))
+    ahora = list(st.session_state.get(clave_widget) or [])
+    st.session_state["vista_sel"] = ahora
+    nuevos = [e for e in ahora if e not in antes]
+    if nuevos:
+        st.session_state["entidad"] = nuevos[-1]
+    elif ahora and st.session_state.get("entidad") not in ahora:
+        st.session_state["entidad"] = ahora[0]
 
 
 def selector_vista(entidades, dp, key):
@@ -399,6 +407,9 @@ def selector_vista(entidades, dp, key):
     if len(entidades) <= 1:
         return entidades
     previa = [e for e in st.session_state.get("vista_sel", []) if e in entidades]
+    activa = st.session_state.get("entidad")
+    if activa in entidades and activa not in previa:
+        previa = [activa]
     if not previa:
         previa = _por_volumen(dp, entidades)[:1]
     st.session_state["vista_sel"] = previa
@@ -406,10 +417,10 @@ def selector_vista(entidades, dp, key):
     st.session_state[kw_sel] = previa
     etiqueta = f"{mayus(nombre_entidad(dp, True))} a mostrar"
     if len(entidades) <= MAX_BOTONES:
-        st.pills(etiqueta, entidades, selection_mode="multi", key=kw_sel, on_change=_sync, args=(kw_sel, "vista_sel"))
+        st.pills(etiqueta, entidades, selection_mode="multi", key=kw_sel, on_change=_sync_vista, args=(kw_sel,))
     else:
-        st.multiselect(etiqueta, entidades, key=kw_sel, max_selections=MAX_SERIES, on_change=_sync,
-                       args=(kw_sel, "vista_sel"), placeholder=f"Elige hasta {MAX_SERIES}")
+        st.multiselect(etiqueta, entidades, key=kw_sel, max_selections=MAX_SERIES, on_change=_sync_vista,
+                       args=(kw_sel,), placeholder=f"Elige hasta {MAX_SERIES}")
     elegidas = [e for e in entidades if e in (st.session_state.get(kw_sel) or [])]
     if not elegidas:
         st.caption(f":material/info: Elige al menos un {nombre_entidad(dp)}. Mientras tanto se muestra el primero.")
@@ -457,8 +468,14 @@ def elegir_uno(etiqueta, opciones, key, estado, defecto=None, formato=None):
 
 
 def selector_entidad(entidades, dp, key="ent"):
-    """Selector de una sola entidad, visible en la página (no en la barra lateral)."""
-    return elegir_uno(mayus(nombre_entidad(dp)), entidades, key=key, estado="entidad")
+    """Selector de una sola entidad, visible en la página. Comparte la elección con los selectores múltiples."""
+    entidades = list(entidades)
+    previa = [e for e in st.session_state.get("vista_sel", []) if e in entidades]
+    defecto = previa[0] if previa else (_por_volumen(dp, entidades)[:1] or [None])[0]
+    ent = elegir_uno(mayus(nombre_entidad(dp)), entidades, key=key, estado="entidad", defecto=defecto)
+    if ent not in st.session_state.get("vista_sel", []):
+        st.session_state["vista_sel"] = [ent]
+    return ent
 
 
 def panel_dataset(compacto=True):

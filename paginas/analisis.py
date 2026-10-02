@@ -39,7 +39,7 @@ def colores(lista):
 
 # ---------------------------------------------------------------- estacionalidad
 if "Estacionalidad" in elegidas:
-    sel = S.elegir_uno(nom, ents, key="est", estado="est_ent") if n_ent > 1 else ents[0]
+    sel = S.elegir_uno(nom, ents, key="est", estado="entidad") if n_ent > 1 else ents[0]
     sub = df[df["entidad"] == sel]
     serie = sub.groupby("fecha")["objetivo"].sum()
     cols = st.columns(2 if dp.config.frecuencia == "D" else 1)

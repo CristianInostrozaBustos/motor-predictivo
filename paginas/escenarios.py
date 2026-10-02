@@ -18,6 +18,10 @@ freq = dp.config.frecuencia
 H = S.horizonte()
 nom = S.mayus(S.nombre_entidad(dp))
 entidades = list(res.series)
+_activa = st.session_state.get("entidad")
+if (_activa in entidades and _activa != st.session_state.get("_esc_activa")
+        and st.session_state.get("esc_alcance") not in (None, "Todas")):
+    st.session_state["esc_alcance"] = _activa
 u, u_pl = fi["unidad"], fi["unidad_pl"]
 
 
@@ -139,19 +143,30 @@ with st.container(border=True, key="panel_control_esc"):
                                                          f"unidad a tu proveedor principal ({ref}).")
                     eventos.append(X.Evento("retraso", float(v), costo_alt=c_alt))
                 elif t == "precio":
-                    v = st.slider("Cambio de precio (%)", -50, 50, 15, 5, key="esc_pre")
-                    modo = st.radio("Cómo estimar el efecto en la demanda", ["Elasticidad", "Lo que aprendió el modelo"],
-                                    horizontal=True, key="esc_pre_modo",
-                                    help="Si en tu historial el precio casi nunca cambió por sí solo, el modelo no alcanza "
-                                         "a aprender cuánto reacciona la demanda. En ese caso conviene una elasticidad conocida.")
-                    if modo == "Elasticidad":
-                        el = st.number_input("Elasticidad precio-demanda", -3.0, 0.0, -0.3, 0.05, format="%.2f",
-                                             key="esc_pre_el",
-                                             help="Cambio % de la demanda por cada 1% de cambio en el precio. −0,3 = si el "
-                                                  "precio sube 10%, la demanda baja 3%.")
-                        eventos.append(X.Evento("precio", v / 100, elasticidad=float(el)))
+                    alc = st.session_state.get("esc_alcance")
+                    ref_p = S.precio(alc) if alc not in (None, "Todas") else None
+                    como = S.elegir_uno("Cambio de precio en", ["%", "Precio nuevo ($)"] if ref_p else ["%"],
+                                        key="pre_como", estado="esc_pre_como")
+                    if como == "%":
+                        v = st.slider("Cambio de precio (%)", -50, 50, 15, 5, key="esc_pre")
+                        if not ref_p and len(entidades) > 1:
+                            st.caption("Para ingresar el precio en pesos, elige un " + S.nombre_entidad(dp) +
+                                       " en «Afecta a».")
                     else:
-                        eventos.append(X.Evento("precio", v / 100))
+                        nuevo = st.number_input(f"Precio nuevo de {alc} ($)", 1.0, None, float(round(ref_p * 1.15)),
+                                                10.0, format="%.0f", key=f"esc_pre_monto_{alc}")
+                        v = (nuevo / ref_p - 1) * 100
+                        st.caption(f"Hoy cuesta {E.clp_md(ref_p)}: es un cambio de " + f"{v:+.1f}".replace(".", ",") + "%.")
+                    with st.expander("Opciones avanzadas"):
+                        usar_el = st.toggle("Usar una sensibilidad al precio conocida", key="esc_pre_usar_el",
+                                            help="Por defecto, el efecto del precio en la demanda lo calcula el modelo "
+                                                 "con lo que aprendió de tu historial.")
+                        el = st.number_input("Elasticidad precio-demanda", -3.0, 0.0, -0.3, 0.05, format="%.2f",
+                                             key="esc_pre_el", disabled=not usar_el)
+                        st.caption("Cuánto cambian tus ventas cuando cambia el precio. Por ejemplo, −0,3 significa que "
+                                   "si el precio sube 10%, vendes 3% menos. Úsala si conoces este dato de tu negocio o "
+                                   "si tu historial casi no tiene cambios de precio.")
+                    eventos.append(X.Evento("precio", v / 100, elasticidad=float(el) if usar_el else None))
                 elif t == "promocion":
                     st.markdown("**Promoción**")
                     st.caption("Se activa una promoción durante todo el evento; el modelo estima su efecto.")
@@ -168,6 +183,11 @@ with st.container(border=True, key="panel_control_esc"):
         c2, c3, _ = st.columns([1, 1, 2], gap="medium")
     alcance = S.elegir_uno("Afecta a", (["Todas"] if len(entidades) > 1 else []) + entidades, key="alc",
                            estado="esc_alcance", formato=lambda x: "Todos" if x == "Todas" else x)
+    if alcance != "Todas":
+        st.session_state["entidad"] = alcance
+        if alcance not in st.session_state.get("vista_sel", []):
+            st.session_state["vista_sel"] = [alcance]
+    st.session_state["_esc_activa"] = st.session_state.get("entidad")
     adelanto = {"D": pd.Timedelta(days=14), "W": pd.Timedelta(weeks=2), "M": pd.DateOffset(months=1), "Q": pd.DateOffset(months=3)}[freq]
     # el retraso solo se nota si el evento incluye un pedido: se sugiere empezar en el próximo pedido
     ref_ent = alcance if alcance != "Todas" else None
@@ -338,10 +358,11 @@ if vista_pag == "Demanda":
     otros_modelo = [ev for ev in esc.eventos if ev.tipo in ("promocion", "exogena")]
     if ev_precio and ev_precio[0].elasticidad is None and len(esc.eventos) == 1 and d0:
         el_modelo = ((d1 / d0) - 1) / ev_precio[0].valor
-        st.caption(f"Efecto calculado por el modelo: equivale a una elasticidad de {E.num(el_modelo, 2)}. Si parece "
-                   "demasiado baja, tu historial tiene pocos cambios de precio: prueba con una elasticidad fija.")
+        st.caption(f"Efecto calculado por el modelo con lo que aprendió de tu historial: por cada 1% que sube el precio, "
+                   f"la demanda cambia {E.num(el_modelo, 2)}%. Si parece muy poco, es porque tu historial tiene pocos "
+                   "cambios de precio: en Opciones avanzadas puedes indicar una sensibilidad conocida.")
     elif ev_precio and ev_precio[0].elasticidad is not None:
-        st.caption(f"Efecto del precio calculado con elasticidad {E.num(ev_precio[0].elasticidad, 2)}.")
+        st.caption(f"Efecto del precio calculado con la sensibilidad que indicaste ({E.num(ev_precio[0].elasticidad, 2)}).")
     if otros_modelo:
         st.caption("El efecto de la promoción u otras variables lo calcula el modelo con lo que aprendió de tu historial.")
 
