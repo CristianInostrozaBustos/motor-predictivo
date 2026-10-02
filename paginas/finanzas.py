@@ -25,7 +25,7 @@ E.titulo_compacto("Paso 4 · Finanzas", vista)
 val = S.valores(dp)
 
 
-def precio_y_costo():
+def precio_y_costo(ent):
     st.caption("Se toman de tu archivo cuando vienen. Puedes asignarlos o corregirlos aquí; se usan en todo el sitio. "
                "Sin precio, todo se muestra en unidades.")
     base = val.reset_index()[["entidad", "precio", "costo", "origen_precio", "origen_costo"]]
@@ -34,7 +34,7 @@ def precio_y_costo():
         "entidad": nom, "precio": "Precio de venta ($)", "costo": "Costo unitario ($)",
         "origen_precio": "Precio desde", "origen_costo": "Costo desde"})
     editado = st.data_editor(
-        base, hide_index=True, width="stretch", key=f"valores_{S.clave_dataset(dp)}",
+        E.destacar_fila(base, nom, ent), hide_index=True, width="stretch", key=f"valores_{S.clave_dataset(dp)}",
         disabled=[nom, "Precio desde", "Costo desde"],
         column_config={
             "Precio de venta ($)": st.column_config.NumberColumn(min_value=0.0, step=1.0, format="%.0f"),
@@ -58,7 +58,7 @@ def precio_y_costo():
                    "probablemente es el precio de un insumo. El margen de esos productos no se calcula.")
 
 
-def comparar_productos():
+def comparar_productos(ent):
     filas = []
     for e in entidades:
         u = fut[e]["P50"].sum()
@@ -69,12 +69,12 @@ def comparar_productos():
             fila["Margen"] = E.clp(u * (p_e - c_e)) if (p_e and c_e) else "—"
         filas.append(fila)
     tabla = pd.DataFrame(filas).sort_values("_orden", ascending=False).drop(columns="_orden")
-    st.dataframe(tabla, hide_index=True, width="stretch")
+    st.dataframe(E.destacar_fila(tabla, nom, ent), hide_index=True, width="stretch")
 
 
-def insumos():
+def insumos(ent):
     st.caption("Opcional. Indica cuánto insumo usa cada unidad vendida (por ejemplo, 18 g de café por taza) y el sitio "
-               "calcula cuánto necesitas para el período: lo normal (pronóstico) y lo prudente (escenario alto).")
+               f"calcula cuánto necesita {ent} para el período: lo normal (pronóstico) y lo prudente (escenario alto).")
     clave_ins = f"insumos_{S.clave_dataset(dp)}"
     base_ins = st.session_state.get(clave_ins, pd.DataFrame({
         "Insumo": pd.Series(dtype="str"), "Cantidad por unidad": pd.Series(dtype="float"),
@@ -89,26 +89,30 @@ def insumos():
     if len(ins):
         filas = []
         for _, r in ins.iterrows():
-            aplica = entidades if (pd.isna(r["Aplica a"]) or r["Aplica a"] in ("", "Todos")) else [r["Aplica a"]]
-            aplica = [e for e in aplica if e in fut]
-            normal = sum(fut[e]["P50"].sum() for e in aplica) * r["Cantidad por unidad"]
-            prudente = sum(fut[e]["P90"].sum() for e in aplica) * r["Cantidad por unidad"]
+            aplica_todos = pd.isna(r["Aplica a"]) or r["Aplica a"] in ("", "Todos")
+            if not aplica_todos and str(r["Aplica a"]) != str(ent):
+                continue
+            normal = fut[ent]["P50"].sum() * r["Cantidad por unidad"]
+            prudente = fut[ent]["P90"].sum() * r["Cantidad por unidad"]
             unidad = "" if pd.isna(r["Unidad"]) else f" {r['Unidad']}"
             filas.append({"Insumo": r["Insumo"], "Necesitas (normal)": f"{E.num(normal)}{unidad}",
-                          "Prudente (escenario alto)": f"{E.num(prudente)}{unidad}",
-                          "Para": "todos" if len(aplica) == len(entidades) else ", ".join(map(str, aplica))})
-        st.dataframe(pd.DataFrame(filas), hide_index=True, width="stretch")
+                          "Prudente (escenario alto)": f"{E.num(prudente)}{unidad}"})
+        if filas:
+            st.markdown(f"#### Lo que necesita {ent} en los próximos {H} {fi['unidad_pl']}")
+            st.dataframe(pd.DataFrame(filas), hide_index=True, width="stretch")
+        else:
+            st.caption(f":material/info: Ningún insumo de la tabla aplica a {ent}.")
 
 
+# el producto elegido es el mismo en todas las vistas de Finanzas
+ent = S.selector_entidad(entidades, dp, key="fin")
 if vista == "Precio y costo":
-    precio_y_costo()
+    precio_y_costo(ent)
 elif vista == "Comparar productos":
-    comparar_productos()
+    comparar_productos(ent)
 elif vista == "Insumos":
-    insumos()
+    insumos(ent)
 else:
-    # ------------------------------------------------------------ un producto a la vez
-    ent = S.selector_entidad(entidades, dp, key="fin")
     ver = [ent]
     nombre_vista = str(ent)
     precios = {e: S.precio(e) for e in ver}

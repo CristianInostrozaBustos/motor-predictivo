@@ -37,11 +37,7 @@ vista = S.vista("decisiones")
 E.titulo_compacto("Paso 3 · Decisiones de abastecimiento", vista)
 
 # ---------------------------------------------------------------- producto y panel de control (sobre el gráfico)
-todos = vista == "Todos los productos"
-if todos:
-    ent = st.session_state.get("entidad") if st.session_state.get("entidad") in entidades else entidades[0]
-else:
-    ent = S.selector_entidad(entidades, dp, key="dec")
+ent = S.selector_entidad(entidades, dp, key="dec")
 with st.container(border=True, key="panel_control_dec"):
     c1, c2, c3, c4 = st.columns(4, vertical_alignment="bottom")
     nivel = c1.select_slider("Nivel de servicio", list(P.Z_NIVEL), value=(guardada or {}).get("nivel", "90%"),
@@ -51,15 +47,12 @@ with st.container(border=True, key="panel_control_dec"):
                                key="dec_revision",
                                help="Como mínimo se usa el lead time + 20%, para que llegue un pedido antes de "
                                     "necesitar el siguiente.")
-    if todos:
-        lt_e, inv_e = param[ent]["lt"], None if pd.isna(param[ent]["inv"]) else param[ent]["inv"]
-    else:
-        lt_e = c3.number_input(f"Lead time de {ent} (días)", 0.0, 365.0, param[ent]["lt"], 1.0, format="%.1f",
-                               key=f"lt_{clave}_{ent}")
-        inv_e = c4.number_input(f"Inventario actual de {ent}", 0.0, None,
-                                None if pd.isna(param[ent]["inv"]) else float(param[ent]["inv"]), 100.0,
-                                format="%.0f", key=f"inv_{clave}_{ent}", placeholder="Ingrésalo")
-    if not todos and (not tiene_lt or not tiene_inv):
+    lt_e = c3.number_input(f"Lead time de {ent} (días)", 0.0, 365.0, param[ent]["lt"], 1.0, format="%.1f",
+                           key=f"lt_{clave}_{ent}")
+    inv_e = c4.number_input(f"Inventario actual de {ent}", 0.0, None,
+                            None if pd.isna(param[ent]["inv"]) else float(param[ent]["inv"]), 100.0,
+                            format="%.0f", key=f"inv_{clave}_{ent}", placeholder="Ingrésalo")
+    if not tiene_lt or not tiene_inv:
         st.caption(":material/info: Tu archivo no trae " + " ni ".join(
             x for x, falta in (("lead time", not tiene_lt), ("inventario", not tiene_inv)) if falta)
             + ": complétalo aquí para cada " + S.nombre_entidad(dp) + ".")
@@ -157,7 +150,8 @@ def tabla_skus():
                      "Fecha del próximo pedido": "Próximo pedido"})
         for c in ["Cantidad (u.)", "Alcanza (días)"]:
             vista[c] = vista[c].map(lambda v: "" if pd.isna(v) else E.num(v))
-        st.dataframe(vista, width="stretch", hide_index=True, height=min(520, 38 + 35 * len(vista)))
+        st.dataframe(E.destacar_fila(vista, nom, ent), width="stretch", hide_index=True,
+                     height=min(520, 38 + 35 * len(vista)))
 
 
 def detalle_tecnico():

@@ -370,6 +370,12 @@ def fig_banda(fechas, p10, p50, p90, nombre_banda="Rango P10–P90", nombre_p50=
     return fig
 
 
+def destacar_fila(df, columna, valor):
+    """Styler que resalta la fila del producto elegido (para st.dataframe y st.data_editor)."""
+    estilo = "background-color: #e8f0fb; font-weight: 600"
+    return df.style.apply(lambda fila: [estilo if str(fila[columna]) == str(valor) else "" for _ in fila], axis=1)
+
+
 def insignia(texto, tipo="neutro"):
     colores = {
         "ok": ("#e7f4ea", "#0f6b1f"), "aviso": ("#fbf1dc", "#7a5300"), "error": ("#fbe6e6", "#9b2020"),
