@@ -13,6 +13,38 @@ E.encabezado(
     "Ventas o demanda en CSV o Excel. El sistema reconoce las columnas y deja todo listo para pronosticar.",
 )
 
+# ---------------------------------------------------------------- análisis anteriores (con sesión iniciada)
+import cuenta  # noqa: E402
+
+_u = cuenta.usuario()
+if _u:
+    try:
+        _anteriores = S.repositorio().listar(_u["correo"])
+    except Exception:  # noqa: BLE001
+        _anteriores = []
+    if _anteriores:
+        with st.container(border=True):
+            c1, c2 = st.columns([4, 1], vertical_alignment="bottom")
+            _reg = c1.selectbox(
+                "Cargar un análisis anterior", _anteriores, index=None, placeholder="Elige uno de tus análisis",
+                format_func=lambda r: (f"{r['nombre']} · {r.get('n_entidades') or 0} "
+                                       f"{'serie' if (r.get('n_entidades') or 0) == 1 else 'series'} · "
+                                       f"{D.FRECUENCIAS.get(r.get('frecuencia') or 'D', D.FRECUENCIAS['D'])['nombre']} · "
+                                       f"{str(r.get('actualizado') or '')[:10]}"),
+                key="cargar_anterior", help="Recupera el archivo, la configuración y el modelo ya entrenado.")
+            if c2.button("Abrir", type="primary", width="stretch", disabled=_reg is None, key="abrir_anterior"):
+                barra = st.progress(0.0, text="Abriendo…")
+                try:
+                    S.abrir_pronostico(_reg, lambda f, t: barra.progress(min(f, 1.0), text=t))
+                    barra.empty()
+                    st.switch_page("paginas/pronostico.py")
+                except Exception as e:  # noqa: BLE001
+                    barra.empty()
+                    st.error(f"No se pudo abrir: {e}")
+elif cuenta.login_disponible():
+    st.caption(":material/history: Inicia sesión con Google (barra lateral) para volver a tus análisis anteriores "
+               "sin subir el archivo de nuevo.")
+
 # ---------------------------------------------------------------- origen
 with st.container(border=True):
     origen = st.segmented_control("Origen", ["Subir archivo", "Usar un ejemplo"], default="Subir archivo",
@@ -97,10 +129,7 @@ with st.expander("Revisar columnas detectadas", icon=":material/view_column:", e
                            index=1 if finfo["frac_duplicadas"] > 0.2 else 0,
                            format_func=lambda x: {"interpolar": "Faltan datos (interpolar)", "cero": "No hubo ventas (cero)"}[x])
     negativos = a3.toggle("Tratar negativos como cero", value=True, key=f"neg_{k}")
-    suavizar = a3.toggle("Suavizar picos aislados al entrenar", value=S.SUAVIZAR_PICOS_DEFECTO, key=f"suav_{k}",
-                         help="Ventas puntuales muy por encima de lo normal que no se repiten (un pedido excepcional, "
-                              "un error de digitación). El modelo aprende sin ellas; tu historial y la medición del "
-                              "error no cambian.")
+    suavizar = S.SUAVIZAR_PICOS_DEFECTO
 
 repetidas = [c for c in asignadas if list(roles.values()).count(c) > 1]
 if repetidas:
@@ -163,9 +192,7 @@ with st.container(border=True):
         n_e = dp.picos["entidad"].nunique()
         st.caption(f":material/troubleshoot: Se detectaron {len(dp.picos)} picos aislados en {n_e} "
                    f"{S.nombre_entidad(dp, n_e != 1)}: ventas muy por encima de lo normal que no se repiten. "
-                   + ("El modelo aprende sin ellos; tu historial no cambia." if dp.config.suavizar_picos else
-                      "Se están usando tal cual para entrenar.")
-                   + " Puedes cambiarlo en **Revisar columnas detectadas → Suavizar picos aislados**.")
+                   + "El modelo aprende sin ellos; tu historial y la medición del error no cambian.")
         with st.expander("Ver picos detectados"):
             st.dataframe(pd.DataFrame({
                 S.mayus(S.nombre_entidad(dp)): dp.picos["entidad"],

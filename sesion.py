@@ -680,7 +680,6 @@ def abrir_pronostico(reg, progreso=None):
         if campo in cfg:
             st.session_state[f"{llave}_{k}"] = cfg[campo]
     st.session_state[f"serie_{k}"] = cfg.get("nombre_serie") or ""
-    st.session_state[f"suav_{k}"] = cfg.get("suavizar_picos", SUAVIZAR_PICOS_DEFECTO)
 
     dp = preparar_cacheado(df, tuple(sorted(roles.items())), tuple(cfg.get("exogenas", [])), cfg.get("frecuencia", "D"),
                            cfg.get("relleno", "interpolar"), cfg.get("negativos", True),
