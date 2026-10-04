@@ -266,7 +266,9 @@ def _evaluar_tramo(modelo, esc, ent_a_id, ventana, series, inicio_por_ent, largo
 
 def wape(real, pred):
     real, pred = np.asarray(real, float), np.asarray(pred, float)
-    return float(np.abs(real - pred).sum() / max(real.sum(), 1e-9) * 100)
+    if real.sum() <= 0:     # sin demanda en el tramo: el error relativo no está definido
+        return np.nan
+    return float(np.abs(real - pred).sum() / real.sum() * 100)
 
 
 def mape(real, pred):
@@ -360,7 +362,10 @@ def entrenar_motor(dp: DatasetPreparado, plan: PlanEntrenamiento, al_avance=None
     busqueda = pd.DataFrame(filas)
     mejor = busqueda["wape"].min()
     # a igualdad práctica de error (menos de 2% relativo), gana la ventana más corta (modelo más simple)
-    ventana = int(busqueda[busqueda["wape"] <= mejor * 1.02].sort_values("ventana").iloc[0]["ventana"])
+    if np.isnan(mejor):     # sin demanda en el tramo de selección: la más corta
+        ventana = int(busqueda["ventana"].min())
+    else:
+        ventana = int(busqueda[busqueda["wape"] <= mejor * 1.02].sort_values("ventana").iloc[0]["ventana"])
     busqueda["elegida"] = busqueda["ventana"] == ventana
 
     # ---------------- 2) modelo final (entrenamiento + selección) y prueba
@@ -423,7 +428,7 @@ def _torneo(res: ResultadoModelo, ini_sel, ini_prueba, seleccion_lstm, avisar):
     plan, series, V = res.plan, res.series, res.plan.validacion
     ents, freq = list(series), plan.frecuencia
     intermit = MT.intermitentes(series, ents)
-    nombres = MT.motores_estadisticos(series, ents)
+    nombres = MT.motores_estadisticos(series, ents, freq)
     sel, prueba = {MT.LSTM: seleccion_lstm}, {MT.LSTM: {e: {q: res.backtest[e][q].to_numpy() for q in
                                                             ("P10", "P50", "P90")} for e in ents}}
     for nombre_corte, corte, destino, avance in (("seleccion", ini_sel, sel, 0.84), ("prueba", ini_prueba, prueba, 0.9)):
@@ -474,12 +479,18 @@ def _torneo(res: ResultadoModelo, ini_sel, ini_prueba, seleccion_lstm, avisar):
     futuro = {}
     estad = [m for m in necesarios if m in nombres]
     if estad:
-        futuro.update(MT.estadisticos(series, ents, freq, fin, h, estad))
+        try:
+            futuro.update(MT.estadisticos(series, ents, freq, fin, h, estad))
+        except Exception:  # noqa: BLE001  (si falla, esos productos quedan con la LSTM)
+            pass
     if "LightGBM" in necesarios:
         fq = FRECUENCIAS[freq]["pandas"]
         exf = {e: _exogenas_futuras(res, e, pd.date_range(series[e].fechas[-1], periods=h + 1, freq=fq)[1:])
                for e in ents}
-        futuro["LightGBM"] = MT.lightgbm(series, ents, freq, fin, h, exf)
+        try:
+            futuro["LightGBM"] = MT.lightgbm(series, ents, freq, fin, h, exf)
+        except Exception:  # noqa: BLE001
+            pass
     if MT.LSTM in necesarios:
         lstm = pronosticar(res, h, freq, solo_lstm=True)
         futuro[MT.LSTM] = {e: {q: lstm[e][q].to_numpy() for q in ("P10", "P50", "P90")} for e in ents}

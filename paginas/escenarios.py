@@ -202,17 +202,21 @@ with st.container(border=True, key="panel_control_esc"):
     duracion = c3.slider(f"Dura ({u_pl})", 1, dur_max, min(dur_def, dur_max), key="esc_dur")
     simular = st.button("Simular escenario", type="primary", icon=":material/play_arrow:", disabled=not eventos)
 
+offset = pd.tseries.frequencies.to_offset(FRECUENCIAS[freq]["pandas"])
+desde = len(pd.date_range(primera_fecha, pd.Timestamp(fecha_ini), freq=offset)) - 1
+actual = dict(clave=S.clave_dataset(dp), eventos=eventos, desde=max(0, desde), duracion=duracion, alcance=alcance)
 if simular:
     st.session_state.pop("_esc_cargado", None)
-    offset = pd.tseries.frequencies.to_offset(FRECUENCIAS[freq]["pandas"])
-    desde = len(pd.date_range(primera_fecha, pd.Timestamp(fecha_ini), freq=offset)) - 1
-    st.session_state["escenario"] = dict(clave=S.clave_dataset(dp), eventos=eventos, desde=max(0, desde),
-                                         duracion=duracion, alcance=alcance)
+    st.session_state["escenario"] = actual
 
 guardado = st.session_state.get("escenario")
 if not guardado or guardado["clave"] != S.clave_dataset(dp):
     st.caption(":material/info: Elige uno o más eventos y presiona **Simular escenario**.")
     st.stop()
+if repr(guardado) != repr(actual):
+    st.info(("Cambiaste el escenario. Presiona **Simular escenario** para actualizar el resultado"
+             if eventos else "Elige al menos un evento para simular")
+            + "; mientras tanto ves el último que simulaste.", icon=":material/refresh:")
 
 esc = X.Escenario(guardado["eventos"], guardado["desde"], guardado["duracion"])
 afectadas = entidades if guardado["alcance"] == "Todas" else [guardado["alcance"]]
@@ -397,11 +401,11 @@ if vista_pag == "Inventario" and hay_inv:
     st.caption("Simulación con venta perdida: cuando el inventario llega a cero, la demanda de ese día no se atiende.")
 elif vista_pag == "Inventario":
     with st.container(border=True):
-        st.markdown("**Política durante el evento**")
+        st.markdown("**Política al inicio del evento**")
         t = pd.DataFrame({
             "": ["Stock de seguridad", "Punto de reorden", "Meta (T)", "Lead time (días)"],
-            "Actual": [c.dec_base.ss, c.dec_base.rop, c.dec_base.meta, c.dec_base.L * fi["dias"]],
-            "Con el evento": [c.dec_esc.ss, c.dec_esc.rop, c.dec_esc.meta, c.dec_esc.L * fi["dias"]],
+            "Actual": [r["ss_base"], r["rop_base"], r["meta_base"], c.dec_base.L * fi["dias"]],
+            "Con el evento": [r["ss_esc"], r["rop_esc"], r["meta_esc"], c.dec_esc.L * fi["dias"]],
         })
         st.dataframe(t, hide_index=True, width="stretch",
                      column_config={k: st.column_config.NumberColumn(format="%.0f") for k in ("Actual", "Con el evento")})

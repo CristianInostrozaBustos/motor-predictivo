@@ -30,7 +30,7 @@ import zipfile
 
 import requests
 
-VERSION_MOTOR = "m2"          # subir cuando cambie la arquitectura o el formato guardado
+VERSION_MOTOR = "m3"          # subir cuando cambie la arquitectura o el formato guardado
 MAX_MODELOS_LOCALES = 40
 
 

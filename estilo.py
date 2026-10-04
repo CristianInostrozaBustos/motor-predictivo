@@ -49,16 +49,26 @@ def rgba(color_hex, alfa):
 # ---------------------------------------------------------------- formato chileno
 
 def num(x, dec=0):
-    """1234567.8 -> '1.234.568' ; con dec=2 -> '1.234.567,80'."""
+    """1234567.8 -> '1.234.568' ; con dec=2 -> '1.234.567,80'. Sin dato o infinito -> '—'."""
+    try:
+        if x is None or not np.isfinite(float(x)):
+            return "—"
+    except (TypeError, ValueError):
+        return str(x)
     s = f"{x:,.{dec}f}"
+    if s.lstrip("-").strip("0.,") == "":
+        s = s.lstrip("-")
     return s.replace(",", "§").replace(".", ",").replace("§", ".")
 
 
 def pct(x, dec=1):
-    return f"{num(x, dec)}%"
+    t = num(x, dec)
+    return t if t == "—" else f"{t}%"
 
 
 def clp(x):
+    if num(x) == "—":
+        return "—"
     signo = "−" if x < 0 else ""
     return f"{signo}${num(abs(x))}"
 
@@ -71,6 +81,8 @@ def escala_pesos(maximo):
 
 def clp_corto(x):
     """Montos grandes en corto para tarjetas: $339,0 M · $1.432 M · $85.300."""
+    if num(x) == "—":
+        return "—"
     signo = "−" if x < 0 else ""
     x = abs(x)
     if x >= 1e6:
@@ -114,7 +126,7 @@ def registrar_plantilla():
                    separatethousands=True, automargin=True, exponentformat="none"),
         separators=",.",
     )
-    t.data.scatter = [go.Scatter(line=dict(width=2))]
+    t.data.scatter = [go.Scatter(line=dict(width=2), mode="lines")]
     pio.templates["motor"] = t
     pio.templates.default = "motor"
 

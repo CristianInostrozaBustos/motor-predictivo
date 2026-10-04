@@ -31,9 +31,13 @@ if vista == "Prueba con datos pasados":
         c1.metric("Error promedio", E.pct(m["wape"]),
                   help="Suma de los errores absolutos dividida por la demanda real total (WAPE).")
         c2.metric("Aciertos dentro del rango", E.pct(m["cobertura"]))
-        mejora = (m["wape_naive"] - m["wape"]) / m["wape_naive"] * 100
-        c3.metric("Mejora vs. sin modelo", E.pct(mejora),
-                  delta="mejor" if mejora > 0 else "peor", delta_color="normal" if mejora > 0 else "inverse")
+        mejora = (m["wape_naive"] - m["wape"]) / m["wape_naive"] * 100 if m["wape_naive"] > 0 else np.nan
+        if np.isfinite(mejora):
+            c3.metric("Mejora vs. sin modelo", E.pct(mejora),
+                      delta="mejor" if mejora > 0 else "peor", delta_color="normal" if mejora > 0 else "inverse")
+        else:
+            c3.metric("Mejora vs. sin modelo", "—", help="No se puede calcular: en el período de prueba no hubo "
+                                                          "demanda o la referencia sin modelo no tuvo error.")
     fig = E.fig_banda(bt["fecha"], bt["P10"], bt["P50"], bt["P90"], nombre_p50="Lo que pronosticó")
     fig.add_trace(go.Scatter(x=bt["fecha"], y=bt["real"], name="Lo que pasó", line=dict(color=E.TINTA, width=1.8),
                              hovertemplate="%{y:,.0f}"))
@@ -141,7 +145,8 @@ else:
             "Error": m["wape"].map(lambda v: E.pct(v)),
             "Dentro del rango": m["cobertura"].map(lambda v: E.pct(v)),
             "Error sin modelo": m["wape_naive"].map(lambda v: E.pct(v)),
-            "Mejora vs. sin modelo": ((m["wape_naive"] - m["wape"]) / m["wape_naive"] * 100).map(lambda v: E.pct(v)),
+            "Mejora vs. sin modelo": ((m["wape_naive"] - m["wape"]) / m["wape_naive"].where(m["wape_naive"] > 0)
+                                      * 100).map(lambda v: E.pct(v)),
         }), width="stretch", hide_index=True)
 
 # ---------------------------------------------------------------- descarga

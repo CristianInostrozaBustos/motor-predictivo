@@ -38,6 +38,8 @@ E.titulo_compacto("Decisiones de abastecimiento", S.etiqueta_vista(vista))
 
 # ---------------------------------------------------------------- producto y panel de control (sobre el gráfico)
 ent = S.selector_entidad(entidades, dp, key="dec")
+de_ent = f" de {ent}" if len(entidades) > 1 else ""
+de_ent_html = f" de <b>{ent}</b>" if len(entidades) > 1 else ""
 with st.container(border=True, key="panel_control_dec"):
     c1, c2, c3, c4 = st.columns(4, vertical_alignment="bottom")
     nivel = c1.select_slider("Nivel de servicio", list(P.Z_NIVEL), value=(guardada or {}).get("nivel", "90%"),
@@ -47,15 +49,15 @@ with st.container(border=True, key="panel_control_dec"):
                                key="dec_revision",
                                help="Como mínimo se usa el lead time + 20%, para que llegue un pedido antes de "
                                     "necesitar el siguiente.")
-    lt_e = c3.number_input(f"Lead time de {ent} (días)", 0.0, 365.0, param[ent]["lt"], 1.0, format="%.1f",
+    lt_e = c3.number_input(f"Lead time{de_ent} (días)", 0.0, 365.0, param[ent]["lt"], 1.0, format="%.1f",
                            key=f"lt_{clave}_{ent}")
-    inv_e = c4.number_input(f"Inventario actual de {ent}", 0.0, None,
+    inv_e = c4.number_input(f"Inventario actual{de_ent}", 0.0, None,
                             None if pd.isna(param[ent]["inv"]) else float(param[ent]["inv"]), 100.0,
                             format="%.0f", key=f"inv_{clave}_{ent}", placeholder="Ingrésalo")
     if not tiene_lt or not tiene_inv:
         st.caption(":material/info: Tu archivo no trae " + " ni ".join(
             x for x, falta in (("lead time", not tiene_lt), ("inventario", not tiene_inv)) if falta)
-            + ": complétalo aquí para cada " + S.nombre_entidad(dp) + ".")
+            + ": complétalo aquí" + (" para cada " + S.nombre_entidad(dp) if len(entidades) > 1 else "") + ".")
     panel = st.container()
 ajustes[ent] = {"lt": float(lt_e), "inv": np.nan if inv_e is None else float(inv_e)}
 param[ent] = {"lt": float(lt_e), "inv": ajustes[ent]["inv"]}
@@ -175,8 +177,10 @@ if vista == "Todos los productos":
     S.panel_dataset(compacto=True)
     st.stop()
 if d.inventario is None:
-    E.nota(f"Ingresa el inventario actual de <b>{ent}</b> en el panel de arriba para ver la proyección "
+    E.nota(f"Ingresa el inventario actual{de_ent_html} en el panel de arriba para ver la proyección "
            "y la fecha del próximo pedido.")
+    if vista == "Detalle técnico":
+        detalle_tecnico()
     S.panel_dataset(compacto=True)
     st.stop()
 

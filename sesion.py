@@ -616,7 +616,7 @@ def guardar_pronostico_actual():
             nombre=os.path.splitext(nombre)[0].replace("_", " ").capitalize(),
             archivo_nombre=nombre, clave_modelo=clave_dataset(dp), frecuencia=dp.config.frecuencia,
             n_entidades=int(dp.df["entidad"].nunique()), horizonte=int(horizonte() or 0),
-            error_pct=float(res.metricas_entidad["wape"].mean()),
+            error_pct=(lambda v: None if pd.isna(v) else float(v))(res.metricas_entidad["wape"].mean()),
             config=st.session_state.get("config_actual", {}), escenarios=[],
         ))
         contenido = st.session_state.get("archivo_bytes")

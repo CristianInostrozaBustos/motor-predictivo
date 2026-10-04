@@ -75,7 +75,8 @@ def comparar_productos(ent):
 
 def insumos(ent):
     st.caption("Opcional. Indica cuánto insumo usa cada unidad vendida (por ejemplo, 18 g de café por taza) y el sitio "
-               f"calcula cuánto necesita {ent} para el período: lo normal (pronóstico) y lo prudente (escenario alto).")
+               f"calcula cuánto necesita{' ' + str(ent) if len(entidades) > 1 else 's'} para el período: lo normal "
+               "(pronóstico) y lo prudente (escenario alto).")
     clave_ins = f"insumos_{S.clave_dataset(dp)}"
     base_ins = st.session_state.get(clave_ins, pd.DataFrame({
         "Insumo": pd.Series(dtype="str"), "Cantidad por unidad": pd.Series(dtype="float"),
@@ -99,7 +100,7 @@ def insumos(ent):
             filas.append({"Insumo": r["Insumo"], "Necesitas (normal)": f"{E.num(normal)}{unidad}",
                           "Prudente (escenario alto)": f"{E.num(prudente)}{unidad}"})
         if filas:
-            st.markdown(f"#### Lo que necesita {ent} en los próximos {H} {fi['unidad_pl']}")
+            st.markdown(f"#### Lo que necesita{(' ' + str(ent)) if len(entidades) > 1 else 's'} en los próximos {H} {fi['unidad_pl']}")
             st.dataframe(pd.DataFrame(filas), hide_index=True, width="stretch")
         else:
             st.caption(f":material/info: Ningún insumo de la tabla aplica a {ent}.")
@@ -221,7 +222,8 @@ else:
         color = "🟢" if prob >= 0.7 else ("🟠" if prob >= 0.4 else "🔴")
         bajo, alto = max(0.0, mu_total - P.Z_P10_P90 * sd_total), mu_total + P.Z_P10_P90 * sd_total
         E.nota(f"{color} <b>Probabilidad de cumplir la meta: {E.num(prob * 100)}%.</b> "
-               f"Lo más probable es que el período cierre entre <b>{fmt(bajo)}</b> y <b>{fmt(alto)}</b>. "
+               f"Lo más probable es que el período cierre entre <b>{fmt(bajo)}</b> y <b>{fmt(alto)}</b>"
+               + (" " if fmt(alto).endswith(".") else ". ") +
                f"Necesitas {fmt(por_dia_meta)} por {fi['unidad']}; el pronóstico da {fmt(por_dia_pron)} por {fi['unidad']}"
                + (f" (te faltan {fmt(max(0, meta - mu_total))} en el período)." if meta > mu_total else
                   f" (lo superas por {fmt(mu_total - meta)})."))
@@ -247,7 +249,7 @@ else:
                               yaxis_title=eje_y, height=400)
             E.grafico(fig, key="fig_meta")
             st.caption("La probabilidad usa el error real que tuvo el modelo en la prueba con datos pasados, acumulado en el "
-                       "período, no solo el rango diario.")
+                       f"período, no solo el rango de cada {fi['unidad']}.")
     else:
         hist = dp.df[dp.df["entidad"].isin(ver)].groupby("fecha")["objetivo"].sum()
         hist = hist[hist.index >= hist.index.max() - pd.Timedelta(days=730)]

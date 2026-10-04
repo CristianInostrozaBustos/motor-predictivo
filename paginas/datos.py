@@ -9,7 +9,8 @@ from motor import reglas as R
 
 E.encabezado(
     "Tus datos",
-    "Sube tu historial de ventas o demanda en CSV o Excel. El sistema reconoce las columnas y deja todo listo para pronosticar.",
+    "Sube tu historial",
+    "Ventas o demanda en CSV o Excel. El sistema reconoce las columnas y deja todo listo para pronosticar.",
 )
 
 # ---------------------------------------------------------------- origen
@@ -55,8 +56,9 @@ with st.expander("Revisar columnas detectadas", icon=":material/view_column:", e
     for col, rol in zip((c1, c2, c3), ("fecha", "objetivo", "entidad")):
         opciones = ([NINGUNA] if rol == "entidad" else []) + columnas
         d = det.roles.get(rol)
-        sel = col.selectbox(D.ROLES[rol]["etiqueta"], opciones, index=opciones.index(d) if d in opciones else 0,
-                            key=f"rol_{rol}_{k}")
+        sel = col.selectbox(D.ROLES[rol]["etiqueta"], opciones,
+                            index=opciones.index(d) if d in opciones else (0 if rol == "entidad" else None),
+                            key=f"rol_{rol}_{k}", placeholder="Elige una columna")
         roles[rol] = None if sel == NINGUNA else sel
     nombre_serie = ""
     if roles.get("entidad"):
@@ -106,11 +108,19 @@ if not roles.get("fecha") or not roles.get("objetivo"):
 if fechas_tmp is None or fechas_tmp.notna().mean() < 0.5:
     st.error(f"La columna '{roles['fecha']}' no contiene fechas reconocibles.")
     st.stop()
+if finfo.get("mediana_dias", 0) > 200:
+    st.error("Tus datos parecen anuales (un registro por año). El sistema trabaja con datos diarios, semanales, "
+             "mensuales o trimestrales.")
+    st.stop()
 
 try:
     dp = S.preparar_cacheado(df, tuple(sorted(roles.items())), tuple(exogenas), frecuencia, relleno, negativos)
 except Exception as e:  # noqa: BLE001
     st.error(f"No pudimos preparar los datos: {e}")
+    st.stop()
+if dp.df["objetivo"].notna().sum() == 0:
+    st.error(f"La columna '{roles['objetivo']}' no tiene valores numéricos. Elige la columna con las cantidades "
+             "a pronosticar.")
     st.stop()
 st.session_state["dp"] = dp
 st.session_state["config_actual"] = dict(roles=roles, exogenas=list(exogenas), frecuencia=frecuencia, relleno=relleno,

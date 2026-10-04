@@ -7,6 +7,7 @@ entidad y período, y una frecuencia regular.
 
 from __future__ import annotations
 
+import csv
 import io
 import re
 import unicodedata
@@ -39,6 +40,8 @@ ROLES = {
     "costo_unitario": dict(etiqueta="Costo unitario", obligatorio=False,
                            claves=["costo_unitario", "costo", "cost", "unit_cost", "precio_compra", "precio_unitario_primario"]),
 }
+_NO_ENTIDAD = {"comentario", "comentarios", "comment", "comments", "observacion", "observaciones", "nota", "notas",
+               "estado", "status", "moneda", "currency", "unidad", "unidad_medida"}
 ROLES_MODELO = ("precio", "promocion")  # roles que, además, entran al modelo como exógenas
 ROLES_POLITICA = ("lead_time", "inventario", "quiebre", "costo_unitario")  # solo para indicadores y política
 
@@ -107,19 +110,102 @@ def _score_nombre(col: str, claves: list[str]) -> float:
 
 # ---------------------------------------------------------------- carga
 
+class ArchivoInvalido(ValueError):
+    """Error de lectura con un mensaje pensado para el usuario."""
+
+
+def _decodificar(contenido: bytes) -> str:
+    try:
+        return contenido.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        return contenido.decode("latin-1")
+
+
+def _fila_encabezado(crudo: pd.DataFrame) -> int:
+    """Índice de la fila que parece el encabezado real (para archivos con títulos arriba)."""
+    llenas = crudo.notna().sum(axis=1)
+    ancho = llenas.max()
+    for i in range(min(len(crudo), 20)):
+        fila = crudo.iloc[i]
+        textos = [v for v in fila.dropna() if isinstance(v, str)]
+        if (llenas.iloc[i] >= max(2, ancho * 0.8) and len(textos) == llenas.iloc[i]
+                and not any(re.fullmatch(r"-?[\d.,]+", v.strip()) for v in textos)):
+            return i
+    return 0
+
+
+_MILES_PUNTO = re.compile(r"^-?\$?\s?\d{1,3}(\.\d{3})+(,\d+)?$")
+_MILES_COMA = re.compile(r"^-?\$?\s?\d{1,3}(,\d{3})+(\.\d+)?$")
+
+
+def _numeros_con_formato(df: pd.DataFrame) -> pd.DataFrame:
+    """Columnas de texto que en realidad son números con separador de miles o signo $ (1.234.567 / $1,500)."""
+    for c in df.columns:
+        if df[c].dtype != object:
+            continue
+        t = df[c].dropna().astype(str).str.strip()
+        if t.empty:
+            continue
+        if t.str.match(_MILES_PUNTO).mean() >= 0.6 and t.str.match(r"^-?\$?\s?[\d.]+(,\d+)?$").mean() >= 0.95:
+            limpio = df[c].astype(str).str.replace(r"[$\s.]", "", regex=True).str.replace(",", ".")
+        elif t.str.match(_MILES_COMA).mean() >= 0.6 and t.str.match(r"^-?\$?\s?[\d,]+(\.\d+)?$").mean() >= 0.95:
+            limpio = df[c].astype(str).str.replace(r"[$\s,]", "", regex=True)
+        elif t.str.match(r"^-?\$\s?\d+([.,]\d+)?$").mean() >= 0.95:
+            limpio = df[c].astype(str).str.replace(r"[$\s]", "", regex=True).str.replace(",", ".")
+        else:
+            continue
+        df[c] = pd.to_numeric(limpio.where(df[c].notna()), errors="coerce")
+    return df
+
+
 def leer_archivo(nombre: str, contenido: bytes) -> pd.DataFrame:
-    """Lee CSV (detecta separador , ; tab y decimales con coma) o Excel."""
+    """Lee CSV (detecta separador , ; tab | y decimales con coma) o Excel. Salta filas de título sobre el
+    encabezado y convierte números escritos con separador de miles."""
+    if not contenido or not contenido.strip():
+        raise ArchivoInvalido("El archivo está vacío.")
     ext = nombre.lower().rsplit(".", 1)[-1]
-    if ext in ("xlsx", "xls", "xlsm"):
-        return pd.read_excel(io.BytesIO(contenido))
-    texto = contenido.decode("utf-8-sig", errors="replace")
-    muestra = texto[:20000]
-    sep = max([",", ";", "\t", "|"], key=lambda s: muestra.count(s))
-    decimal = "," if sep == ";" and re.search(r"\d,\d", muestra) else "."
-    return pd.read_csv(io.StringIO(texto), sep=sep, decimal=decimal)
+    try:
+        if ext in ("xlsx", "xls", "xlsm"):
+            crudo = pd.read_excel(io.BytesIO(contenido), header=None)
+            h = _fila_encabezado(crudo)
+            df = pd.read_excel(io.BytesIO(contenido), header=h)
+        else:
+            texto = _decodificar(contenido)
+            muestra = texto[:20000]
+            sep = max([",", ";", "\t", "|"], key=lambda s: muestra.count(s))
+            decimal = "," if sep == ";" and re.search(r"\d,\d", muestra) else "."
+            lineas = list(csv.reader(io.StringIO("\n".join(texto.splitlines()[:25])), delimiter=sep))
+            crudo = pd.DataFrame([[v if v.strip() else None for v in fila] for fila in lineas])
+            h = _fila_encabezado(crudo) if len(crudo) else 0
+            df = pd.read_csv(io.StringIO(texto), sep=sep, decimal=decimal, skiprows=h,
+                             on_bad_lines="skip" if h else "error")
+    except ArchivoInvalido:
+        raise
+    except pd.errors.EmptyDataError:
+        raise ArchivoInvalido("El archivo no tiene datos.")
+    except Exception as e:  # noqa: BLE001
+        raise ArchivoInvalido(f"El formato del archivo no se pudo interpretar ({type(e).__name__}).") from e
+    df = df.dropna(axis=1, how="all").dropna(axis=0, how="all")
+    df.columns = [str(c).strip() for c in df.columns]
+    if df.empty or len(df.columns) == 0:
+        raise ArchivoInvalido("El archivo no tiene datos.")
+    return _numeros_con_formato(df.reset_index(drop=True))
 
 
 # ---------------------------------------------------------------- fechas
+
+def _regularidad(fechas: pd.Series) -> float:
+    """Fracción de saltos entre fechas únicas que caen en el salto típico (día, semana, mes, trimestre)."""
+    u = pd.Series(pd.to_datetime(fechas.dropna().unique())).sort_values()
+    d = u.diff().dt.days.dropna()
+    if d.empty:
+        return 0.0
+    tramo = pd.cut(d, [0, 1.5, 8, 32, 93, 1e9], labels=False)
+    return float(tramo.value_counts(normalize=True).iloc[0])
+
+
+_SEMANA_ISO = re.compile(r"^\d{4}-?W\d{1,2}$", re.IGNORECASE)
+
 
 def parsear_fechas(serie: pd.Series) -> tuple[pd.Series, str]:
     """Convierte a fecha probando formato ISO, día/mes y mes/día. Devuelve (fechas, nota)."""
@@ -135,6 +221,9 @@ def parsear_fechas(serie: pd.Series) -> tuple[pd.Series, str]:
         return pd.Series(pd.NaT, index=serie.index), "numérica, no es fecha"
 
     texto = serie.astype(str).str.strip()
+    if texto.str.match(_SEMANA_ISO).mean() > 0.9:
+        t = texto.str.upper().str.replace(r"^(\d{4})-?W(\d{1,2})$", lambda m: f"{m[1]}-W{int(m[2]):02d}-1", regex=True)
+        return pd.to_datetime(t, format="%G-W%V-%u", errors="coerce"), "semana ISO (AAAA-Wnn)"
     candidatos = []
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
@@ -156,7 +245,14 @@ def parsear_fechas(serie: pd.Series) -> tuple[pd.Series, str]:
     if partes.notna().all(axis=1).mean() > 0.5:
         a = pd.to_numeric(partes[0], errors="coerce")
         b = pd.to_numeric(partes[1], errors="coerce")
-        preferido = "día/mes/año" if (a > 12).any() else ("mes/día/año" if (b > 12).any() else "día/mes/año")
+        if (a > 12).any():
+            preferido = "día/mes/año"
+        elif (b > 12).any():
+            preferido = "mes/día/año"
+        else:   # ambiguo: gana el orden que deja las fechas más regulares
+            regular = {nota: _regularidad(f) for _, nota, f in candidatos if nota != "formato ISO (AAAA-MM-DD)"}
+            preferido = "mes/día/año" if regular.get("mes/día/año", 0) > regular.get("día/mes/año", 0) + 0.05 \
+                else "día/mes/año"
         for tasa, nota, f in candidatos:
             if nota == preferido and tasa >= 0.9:
                 return f, nota
@@ -174,9 +270,30 @@ class Deteccion:
     advertencias: list = field(default_factory=list)
 
 
+_VERDADERO = {"1", "si", "sí", "s", "yes", "y", "true", "verdadero", "x"}
+_FALSO = {"0", "no", "n", "false", "falso", ""}
+
+
+def a_numero(s: pd.Series) -> pd.Series:
+    """Convierte a número aceptando booleanos y textos sí/no, true/false."""
+    if pd.api.types.is_bool_dtype(s):
+        return s.astype(float)
+    if pd.api.types.is_numeric_dtype(s):
+        return s.astype(float)
+    x = pd.to_numeric(s, errors="coerce")
+    if x.notna().mean() >= 0.9:
+        return x
+    t = s.astype(str).str.strip().str.lower()
+    t = t.where(s.notna(), None)
+    vistos = set(t.dropna().unique())
+    if vistos and vistos <= (_VERDADERO | _FALSO):
+        return t.map(lambda v: np.nan if v is None else (1.0 if v in _VERDADERO else 0.0))
+    return x
+
+
 def _es_binaria(s: pd.Series) -> bool:
-    v = pd.to_numeric(s, errors="coerce").dropna().unique()
-    return len(v) > 0 and set(np.round(v, 6)).issubset({0, 1})
+    v = a_numero(s).dropna().unique()
+    return len(v) > 0 and set(np.round(v.astype(float), 6)).issubset({0.0, 1.0})
 
 
 def _score_entidad_estructura(s: pd.Series, n: int) -> float:
@@ -184,7 +301,7 @@ def _score_entidad_estructura(s: pd.Series, n: int) -> float:
     if u < 2 or u > max(50_000, n // 3):
         return 0.0
     rep = n / u
-    if rep < 5:
+    if rep < 3:
         return 0.0
     score = min(1.0, rep / 50)
     if pd.api.types.is_float_dtype(s):
@@ -217,17 +334,35 @@ def detectar_roles(df: pd.DataFrame) -> Deteccion:
         adv.append("No se encontró una columna de fecha. Elígela manualmente.")
     usadas.add(mejor)
 
-    numericas = [c for c in cols if c not in usadas and pd.api.types.is_numeric_dtype(df[c])]
+    numericas = [c for c in cols if c not in usadas and (pd.api.types.is_numeric_dtype(df[c]) or _es_binaria(df[c]))]
 
-    # 2) entidad: nombre + estructura (se repite, pocas categorías)
+    # 2) entidad: nombre + estructura (se repite, pocas categorías y separa las fechas repetidas)
+    fechas_det = parsear_fechas(df[roles["fecha"]])[0].dt.normalize() if roles["fecha"] else None
+    frac_fecha_rep = float(fechas_det.duplicated().mean()) if fechas_det is not None else 1.0
     mejor, mejor_s = None, 0.0
     for c in cols:
-        if c in usadas:
+        if c in usadas or _es_binaria(df[c]) or _normalizar(c) in _NO_ENTIDAD:
+            continue
+        nombre_ent = _score_nombre(c, ROLES["entidad"]["claves"])
+        if any(_score_nombre(c, ROLES[r]["claves"]) >= max(0.85, nombre_ent + 1e-9)
+               for r in ROLES if r not in ("entidad", "fecha")):
             continue
         est = _score_entidad_estructura(df[c], n)
         if est == 0:
             continue
-        s = 0.5 * _score_nombre(c, ROLES["entidad"]["claves"]) + 0.5 * est
+        if fechas_det is not None:
+            if frac_fecha_rep < 0.02:          # una fila por fecha: es una sola serie
+                continue
+            pares = pd.DataFrame({"e": df[c].values, "f": fechas_det.values})
+            resuelve = 1 - float(pares.duplicated().mean()) / frac_fecha_rep
+            if resuelve < 0.3:
+                # datos transaccionales: la entidad no elimina las fechas repetidas, pero las reparte
+                reparte = len(pares.drop_duplicates()) / max(fechas_det.nunique(), 1)
+                if not (nombre_ent >= 0.6 and reparte >= 1.5):
+                    continue
+                resuelve = 0.5
+            est = max(est, 0.6) * resuelve if resuelve >= 0.9 else est * resuelve
+        s = 0.5 * nombre_ent + 0.5 * est
         if s > mejor_s:
             mejor, mejor_s = c, s
     if mejor is not None and mejor_s >= 0.2:
@@ -238,7 +373,7 @@ def detectar_roles(df: pd.DataFrame) -> Deteccion:
 
     # 3) roles opcionales por nombre + validación de tipo
     def validar(rol, s):
-        x = pd.to_numeric(s, errors="coerce")
+        x = a_numero(s)
         if x.notna().mean() < 0.9:
             return False
         if rol in ("promocion", "quiebre"):
@@ -264,9 +399,11 @@ def detectar_roles(df: pd.DataFrame) -> Deteccion:
     # 4) objetivo: nombre; si no hay, la numérica continua con más variación
     mejor, mejor_s = None, 0.0
     for c in numericas:
-        if c in usadas or _es_binaria(df[c]):
+        if c in usadas:
             continue
         s = _score_nombre(c, ROLES["objetivo"]["claves"])
+        if _es_binaria(df[c]) and s < 0.85:
+            continue
         if s > mejor_s:
             mejor, mejor_s = c, s
     if mejor is None:
@@ -281,7 +418,8 @@ def detectar_roles(df: pd.DataFrame) -> Deteccion:
     usadas.add(mejor)
 
     # 5) exógenas extra: numéricas que no tomaron rol y que varían en el tiempo
-    exogenas = [c for c in numericas if c not in usadas and df[c].nunique() > 1]
+    exogenas = [c for c in numericas if c not in usadas and pd.api.types.is_numeric_dtype(df[c])
+                and not pd.api.types.is_bool_dtype(df[c]) and df[c].nunique() > 1]
     # descartar columnas derivadas de la fecha (año, mes, día de semana)
     exogenas = [c for c in exogenas if not es_derivada_de_fecha(c)]
     # descartar las que no cambian en el tiempo dentro de ninguna entidad (atributos fijos del producto)
@@ -389,7 +527,7 @@ def preparar(df_original: pd.DataFrame, config: Configuracion) -> DatasetPrepara
     # numéricos
     numericas = [c for c in df.columns if c not in ("fecha", "entidad")]
     for c in numericas:
-        df[c] = pd.to_numeric(df[c], errors="coerce")
+        df[c] = a_numero(df[c])
     sin_obj = df["objetivo"].isna().sum()
     if sin_obj:
         reporte.append(f"{sin_obj:,} filas sin valor en la variable a pronosticar se tratarán como faltantes.".replace(",", "."))

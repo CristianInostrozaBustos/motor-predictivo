@@ -21,6 +21,7 @@ from .datos import FRECUENCIAS
 
 TEMPORADA = {"D": 7, "W": 52, "M": 12, "Q": 4}
 MAX_PUNTOS_ARIMA = 4_000          # AutoARIMA es lento: solo en datasets chicos
+MAX_SERIES_ETS = 150
 UMBRAL_INTERMITENTE = 0.30        # fracción de períodos en cero para considerar Croston y TSB
 NIVEL = 80                        # intervalo 80% -> P10 y P90
 
@@ -41,9 +42,11 @@ def intermitentes(series, ents) -> set:
 
 # ---------------------------------------------------------------- estadísticos (statsforecast)
 
-def motores_estadisticos(series, ents) -> list:
-    nombres = ["Seasonal Naive", "ETS", "Theta"]
-    if sum(len(series[e].fechas) for e in ents) <= MAX_PUNTOS_ARIMA:
+def motores_estadisticos(series, ents, freq=None) -> list:
+    """ARIMA se omite en datos semanales: con temporada 52 su búsqueda es demasiado lenta."""
+    # con catálogos grandes ETS es el motor más lento (búsqueda de modelo por serie) y se omite
+    nombres = ["Seasonal Naive", "Theta"] if len(ents) > MAX_SERIES_ETS else ["Seasonal Naive", "ETS", "Theta"]
+    if sum(len(series[e].fechas) for e in ents) <= MAX_PUNTOS_ARIMA and freq != "W":
         nombres.append("ARIMA")
     if intermitentes(series, ents):
         nombres += ["Croston", "TSB"]
@@ -75,6 +78,8 @@ def estadisticos(series, ents, freq, hasta: dict, h: int, nombres: list) -> dict
         "TSB": lambda: TSB(0.1, 0.1, alias="TSB", prediction_intervals=ci),
     }
     usar = [n for n in nombres if n in fabrica and (ci is not None or n not in ("Croston", "TSB"))]
+    if m == 1:   # sin temporada completa, Seasonal Naive repite el último valor: no compite
+        usar = [n for n in usar if n != "Seasonal Naive"]
     out = {}
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
