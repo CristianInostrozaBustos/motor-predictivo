@@ -56,7 +56,7 @@ def iniciar_sesion():
 
 def cerrar_sesion():
     for k in ("_sesion_simulada", "registro", "resultado", "dp", "df_raw", "nombre_dataset", "archivo_bytes",
-              "politica", "escenario", "vivo_estado", "vivo_panel", "clave_nueva"):
+              "politica", "escenario", "vivo_estado", "clave_nueva", "link_origen", "_auto_hecho", "_auto_fallo"):
         st.session_state.pop(k, None)
     if login_google_disponible() and not usuario_simulado():
         st.logout()

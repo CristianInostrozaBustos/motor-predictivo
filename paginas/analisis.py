@@ -20,7 +20,7 @@ n_ent = dp.df["entidad"].nunique()
 df = dp.df
 
 vista = S.vista("analisis")
-E.titulo_compacto("Explorar · Análisis de tus datos", S.etiqueta_vista(vista))
+E.titulo_compacto("Tus datos · Análisis", S.etiqueta_vista(vista))
 elegidas = [vista]
 no_disp = []
 if not dp.tiene("promocion"):

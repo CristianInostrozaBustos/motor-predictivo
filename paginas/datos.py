@@ -10,7 +10,8 @@ from motor import reglas as R
 E.encabezado(
     "Tus datos",
     "Sube tu historial",
-    "Ventas o demanda en CSV o Excel. El sistema reconoce las columnas y deja todo listo para pronosticar.",
+    "Ventas o demanda en CSV, Excel o una planilla de Google. El sistema reconoce las columnas y deja todo listo "
+    "para pronosticar.",
 )
 
 # ---------------------------------------------------------------- análisis anteriores (con sesión iniciada)
@@ -47,9 +48,28 @@ elif cuenta.login_disponible():
 
 # ---------------------------------------------------------------- origen
 with st.container(border=True):
-    origen = st.segmented_control("Origen", ["Subir archivo", "Usar un ejemplo"], default="Subir archivo",
-                                  label_visibility="collapsed", key="origen_datos")
-    if origen == "Usar un ejemplo":
+    origen = st.segmented_control("Origen", ["Subir archivo", "Pegar un link", "Usar un ejemplo"],
+                                  default="Subir archivo", label_visibility="collapsed", key="origen_datos")
+    if origen == "Pegar un link":
+        c1, c2 = st.columns([4, 1], vertical_alignment="bottom")
+        url = c1.text_input("Link de Google Sheets, o de un Excel o CSV público",
+                            placeholder="https://docs.google.com/spreadsheets/d/…", key="link_datos")
+        if c2.button("Leer", type="primary", width="stretch", disabled=not url.strip(), key="leer_link"):
+            try:
+                nombre_l, contenido_l = S.descargar_link(url.strip())
+                nombre_ds = S.nombre_desde_link(url.strip(), nombre_l)
+                st.session_state["df_raw"] = S.leer(nombre_l, contenido_l)
+                st.session_state["archivo_bytes"] = contenido_l
+                st.session_state["nombre_dataset"] = nombre_ds
+                st.session_state["link_origen"] = {"url": url.strip(), "hash": S.huella_bytes(contenido_l),
+                                                   "nombre": nombre_ds}
+            except Exception as e:  # noqa: BLE001
+                st.error(S._msg_error_link(e))
+        st.caption(":material/info: En Google Sheets: **Compartir → Cualquier persona con el enlace → Lector**. "
+                   + ("Como iniciaste sesión, tu análisis queda conectado a la planilla: cuando agregues filas, el "
+                      "pronóstico se pone al día." if cuenta.usuario() else
+                      "Inicia sesión para que el análisis quede conectado a la planilla y se actualice solo."))
+    elif origen == "Usar un ejemplo":
         opciones = list(S.EJEMPLOS)
         elegido = st.radio("Dataset de ejemplo", opciones, format_func=lambda a: S.EJEMPLOS[a][0],
                            captions=[S.EJEMPLOS[a][1] for a in opciones], label_visibility="collapsed")
@@ -57,6 +77,7 @@ with st.container(border=True):
         if st.button("Cargar ejemplo", type="primary", icon=":material/download:"):
             st.session_state["df_raw"] = S.cargar_ejemplo(elegido)
             st.session_state["nombre_dataset"] = elegido
+            st.session_state.pop("link_origen", None)
     else:
         archivo = st.file_uploader("Archivo CSV o Excel", type=["csv", "xlsx", "xls"], label_visibility="collapsed")
         if archivo is not None and archivo.name != st.session_state.get("nombre_dataset"):
@@ -64,6 +85,7 @@ with st.container(border=True):
                 st.session_state["df_raw"] = S.leer(archivo.name, archivo.getvalue())
                 st.session_state["archivo_bytes"] = archivo.getvalue()
                 st.session_state["nombre_dataset"] = archivo.name
+                st.session_state.pop("link_origen", None)
             except Exception as e:  # noqa: BLE001
                 st.error(f"No pudimos leer el archivo: {e}")
 
@@ -160,8 +182,12 @@ st.session_state["dp"] = dp
 st.session_state["config_actual"] = dict(roles=roles, exogenas=list(exogenas), frecuencia=frecuencia, relleno=relleno,
                                          negativos=bool(negativos), nombre_serie=nombre_serie.strip(),
                                          suavizar_picos=bool(suavizar), inflacion=S.config_inflacion())
-if S.registro_actual() and S.registro_actual().get("vivo_link"):
-    st.session_state["config_actual"]["vivo_link"] = S.registro_actual()["vivo_link"]
+_lo = st.session_state.get("link_origen")
+if _lo and _lo["nombre"] == nombre:
+    st.session_state["config_actual"]["vivo"] = {**S.VIVO_DEFECTO, "link": _lo["url"], "link_base": True,
+                                                 "hash": _lo["hash"]}
+elif S.registro_actual() and S.registro_actual().get("vivo"):
+    st.session_state["config_actual"]["vivo"] = S.registro_actual()["vivo"]
 plan = R.planificar(dp)
 fi = dp.freq_info
 n_ent = dp.df["entidad"].nunique()

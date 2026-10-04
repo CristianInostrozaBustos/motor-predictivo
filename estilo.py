@@ -181,6 +181,15 @@ section[data-testid="stSidebar"] [class*="st-key-vistas_"] label p { font-size: 
   color: #2a78d6; }
 .titulo-compacto h2 { font-size: 1.65rem; font-weight: 750; margin: 0; padding: 0; line-height: 1.2; }
 section[data-testid="stSidebar"] [data-testid="stPageLink"] a { padding: 5px 8px; border-radius: 8px; }
+section[data-testid="stSidebar"] [class*="st-key-menu_tus_datos_activo"] [data-testid="stPageLink"] a {
+  background: rgba(11,11,11,0.06); }
+section[data-testid="stSidebar"] [class*="st-key-menu_tus_datos"][class*="_alerta"] [data-testid="stPageLink"] a::after,
+section[data-testid="stSidebar"] [class*="st-key-vistas_datos_alerta"] [role="radiogroup"] > :nth-child(2) [data-testid="stMarkdownContainer"] p::after {
+  content: "1"; display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px;
+  margin-left: 8px; padding: 0 5px; border-radius: 999px; background: #e5383b; color: #ffffff; font-size: .7rem;
+  font-weight: 700; line-height: 1; vertical-align: middle; box-shadow: 0 0 0 2px #ffffff; }
+.globo-rojo { display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 20px;
+  margin-right: 6px; border-radius: 999px; background: #e5383b; color: #ffffff; font-size: .72rem; font-weight: 700; }
 section[data-testid="stSidebar"] [data-testid="stSidebarUserContent"] { padding-top: 0.5rem; }
 section[data-testid="stSidebar"] [data-testid="stVerticalBlock"] { gap: 0.35rem; }
 

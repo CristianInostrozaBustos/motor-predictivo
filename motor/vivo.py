@@ -450,6 +450,10 @@ def filas_desde_tabla(df, roles: dict):
     for c in CAMPOS_VALOR:
         out[c] = D.a_numero(df[origen[c]]) if c in origen else float("nan")
     out = out[out["fecha"].notna() & out[list(CAMPOS_VALOR)].notna().any(axis=1)]
+    # datos transaccionales: una fila por fecha y serie (ventas sumadas, último inventario, precio promedio)
+    out = out.groupby(["fecha", "entidad"], as_index=False, sort=False).agg(
+        objetivo=("objetivo", lambda x: x.sum(min_count=1)), inventario=("inventario", "last"),
+        precio=("precio", "mean"))
     return [{k: (None if (isinstance(v, float) and math.isnan(v)) else v) for k, v in r.items()}
             for r in out.to_dict("records")]
 
