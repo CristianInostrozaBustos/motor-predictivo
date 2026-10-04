@@ -6,7 +6,6 @@ import streamlit as st
 import cuenta
 import estilo as E
 import sesion as S
-from motor import vivo as V
 
 S.panel_dataset()
 E.encabezado("Tus datos", "Actualización en tiempo real",
@@ -78,64 +77,6 @@ with st.container(border=True):
     if nuevo != {"modo": vivo["modo"], "cada": vivo.get("cada", "pedido")}:
         S.guardar_config_vivo(nuevo)
         st.rerun()
-
-# ---------------------------------------------------------------- planilla conectada
-with st.container(border=True):
-    st.markdown("**Planilla conectada**")
-    if vivo.get("link"):
-        st.markdown(f":material/table: [{'Google Sheets' if 'docs.google.com' in vivo['link'] else 'Planilla'}]"
-                    f"({vivo['link']})" + (" · es el origen de tus datos" if vivo.get("link_base") else
-                                           " · agrega filas a tu archivo"))
-        st.caption("Agrega o corrige filas en la planilla: el sistema la revisa cada vez que abres el sitio.")
-        if st.button("Desconectar planilla", icon=":material/link_off:"):
-            S.guardar_config_vivo({"link": None, "link_base": None, "hash": None})
-            st.rerun()
-    else:
-        st.caption("Conecta una planilla de Google (compartida como \"Cualquier persona con el enlace\") o un "
-                   "CSV/Excel público con las mismas columnas de tu archivo. Las filas nuevas se suman a tus datos.")
-        c1, c2 = st.columns([4, 1], vertical_alignment="bottom")
-        url = c1.text_input("Link", placeholder="https://docs.google.com/spreadsheets/d/…", key="link_conectar")
-        if c2.button("Conectar", width="stretch", disabled=not url.strip()):
-            try:
-                n = len(S.filas_del_link(url.strip(), roles))
-                S.guardar_config_vivo({"link": url.strip(), "link_base": False})
-                st.session_state["vivo_msg"] = f"Planilla conectada: leímos {E.num(n)} filas."
-                st.rerun()
-            except Exception as e:  # noqa: BLE001
-                st.error(str(e) if isinstance(e, ValueError) else f"No se pudo leer el link ({type(e).__name__}).")
-
-if st.session_state.get("vivo_msg"):
-    st.success(st.session_state.pop("vivo_msg"), icon=":material/check_circle:")
-
-# ---------------------------------------------------------------- a mano
-with st.expander("Agregar datos a mano", icon=":material/edit:"):
-    st.caption("Para anotar unas pocas filas: las ventas de los últimos días o el inventario de hoy.")
-    columnas = {"fecha": st.column_config.DateColumn("Fecha", format="DD/MM/YYYY", default=date.today())}
-    if con_ent:
-        columnas["entidad"] = st.column_config.SelectboxColumn(S.mayus(nom_ent), options=dp.entidades)
-    columnas.update(ventas=st.column_config.NumberColumn("Ventas", format="%.2f"),
-                    inventario=st.column_config.NumberColumn("Inventario", min_value=0, format="%.0f"),
-                    precio=st.column_config.NumberColumn("Precio", min_value=0, format="%.2f"))
-    vacia = pd.DataFrame({c: pd.Series(dtype="datetime64[ns]" if c == "fecha" else (object if c == "entidad"
-                                                                                    else float)) for c in columnas})
-    tabla = st.data_editor(vacia, column_config=columnas, num_rows="dynamic", hide_index=True,
-                           key=f"form_{r['id']}", width="stretch")
-    if st.button("Guardar filas", icon=":material/save:", type="primary"):
-        filas = V.filas_de_editor(tabla)
-        if not filas:
-            st.warning("Completa al menos una fila con ventas, inventario o precio.")
-        else:
-            try:
-                limpias = V.validar_filas(filas, con_ent, roles)
-                almacen.guardar_filas(u["correo"], r["id"], limpias, origen="formulario")
-                st.session_state.pop(f"form_{r['id']}", None)
-                st.session_state.pop("vivo_estado", None)
-                st.session_state["vivo_msg"] = f"Guardamos {E.num(len(limpias))} fila{'s' if len(limpias) != 1 else ''}."
-                st.rerun()
-            except V.FilasInvalidas as e:
-                st.error("Revisa estas filas: " + "; ".join(
-                    f"fila {x['fila'] + 1}: {x['motivo']}" if x["fila"] is not None else x["motivo"]
-                    for x in e.errores[:5]))
 
 # ---------------------------------------------------------------- conexión por API (solo desarrollador)
 if S.modo_dev():
