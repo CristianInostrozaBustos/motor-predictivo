@@ -97,6 +97,10 @@ with st.expander("Revisar columnas detectadas", icon=":material/view_column:", e
                            index=1 if finfo["frac_duplicadas"] > 0.2 else 0,
                            format_func=lambda x: {"interpolar": "Faltan datos (interpolar)", "cero": "No hubo ventas (cero)"}[x])
     negativos = a3.toggle("Tratar negativos como cero", value=True, key=f"neg_{k}")
+    suavizar = a3.toggle("Suavizar picos aislados al entrenar", value=S.SUAVIZAR_PICOS_DEFECTO, key=f"suav_{k}",
+                         help="Ventas puntuales muy por encima de lo normal que no se repiten (un pedido excepcional, "
+                              "un error de digitación). El modelo aprende sin ellas; tu historial y la medición del "
+                              "error no cambian.")
 
 repetidas = [c for c in asignadas if list(roles.values()).count(c) > 1]
 if repetidas:
@@ -114,7 +118,8 @@ if finfo.get("mediana_dias", 0) > 200:
     st.stop()
 
 try:
-    dp = S.preparar_cacheado(df, tuple(sorted(roles.items())), tuple(exogenas), frecuencia, relleno, negativos)
+    dp = S.preparar_cacheado(df, tuple(sorted(roles.items())), tuple(exogenas), frecuencia, relleno, negativos,
+                             suavizar)
 except Exception as e:  # noqa: BLE001
     st.error(f"No pudimos preparar los datos: {e}")
     st.stop()
@@ -124,7 +129,8 @@ if dp.df["objetivo"].notna().sum() == 0:
     st.stop()
 st.session_state["dp"] = dp
 st.session_state["config_actual"] = dict(roles=roles, exogenas=list(exogenas), frecuencia=frecuencia, relleno=relleno,
-                                         negativos=bool(negativos), nombre_serie=nombre_serie.strip())
+                                         negativos=bool(negativos), nombre_serie=nombre_serie.strip(),
+                                         suavizar_picos=bool(suavizar))
 plan = R.planificar(dp)
 fi = dp.freq_info
 n_ent = dp.df["entidad"].nunique()
@@ -145,9 +151,29 @@ with st.container(border=True):
         fig.add_trace(go.Scatter(x=g["fecha"], y=g["objetivo"], name=str(e), mode="lines",
                                  line=dict(color=E.color_sku(e, todas), width=1.4),
                                  hovertemplate="%{y:,.0f}"))
+    pk = dp.picos[dp.picos["entidad"].isin(sel)]
+    if len(pk):
+        fig.add_trace(go.Scatter(x=pk["fecha"], y=pk["valor"], mode="markers", name="Pico aislado",
+                                 marker=dict(color=E.ROJO, size=9, symbol="circle-open", line=dict(width=2)),
+                                 customdata=pk["tipico"], hovertemplate="%{y:,.0f} (lo típico: %{customdata:,.0f})"))
     fig.update_layout(title=f"{dp.etiquetas['objetivo']} por {fi['unidad']} · {S.titulo_seleccion(sel, dp)}",
                       height=380, showlegend=True)
     E.grafico(fig, key="fig_total")
+    if len(dp.picos):
+        n_e = dp.picos["entidad"].nunique()
+        st.caption(f":material/troubleshoot: Se detectaron {len(dp.picos)} picos aislados en {n_e} "
+                   f"{S.nombre_entidad(dp, n_e != 1)}: ventas muy por encima de lo normal que no se repiten. "
+                   + ("El modelo aprende sin ellos; tu historial no cambia." if dp.config.suavizar_picos else
+                      "Se están usando tal cual para entrenar.")
+                   + " Puedes cambiarlo en **Revisar columnas detectadas → Suavizar picos aislados**.")
+        with st.expander("Ver picos detectados"):
+            st.dataframe(pd.DataFrame({
+                S.mayus(S.nombre_entidad(dp)): dp.picos["entidad"],
+                "Fecha": pd.to_datetime(dp.picos["fecha"]).dt.strftime("%d/%m/%Y"),
+                "Valor": dp.picos["valor"].map(E.num),
+                "Lo típico en esa fecha": dp.picos["tipico"].map(E.num),
+                "Veces lo típico": (dp.picos["valor"] / dp.picos["tipico"]).map(lambda v: E.num(v, 1) + "×"),
+            }), hide_index=True, width="stretch")
 
 if not plan.viable:
     st.error(f"El historial es demasiado corto para pronosticar: se necesitan al menos "

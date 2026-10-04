@@ -313,6 +313,7 @@ class ResultadoModelo:
     motor_por_entidad: dict | None = None       # entidad -> motor ganador
     futuro_torneo: dict | None = None           # entidad -> DataFrame(fecha, P10, P50, P90) hasta el horizonte máximo
     factor_banda: dict | None = None            # entidad -> factor de calibración de la banda P10-P90
+    picos: dict | None = None                   # entidad -> cantidad de picos suavizados para entrenar
 
 
 def entrenar_motor(dp: DatasetPreparado, plan: PlanEntrenamiento, al_avance=None) -> ResultadoModelo:
@@ -329,6 +330,9 @@ def entrenar_motor(dp: DatasetPreparado, plan: PlanEntrenamiento, al_avance=None
     largo = {e: len(s.fechas) for e, s in series.items()}
     ini_sel = {e: n - 2 * V for e, n in largo.items()}
     ini_prueba = {e: n - V for e, n in largo.items()}
+    picos = _picos_por_entidad(dp, series) if dp.config.suavizar_picos else {}
+    # los picos se suavizan para entrenar y elegir; el tramo de prueba conserva lo real hasta medir el error
+    _suavizar(series, picos, lambda e, i: i < ini_prueba[e])
 
     # ---------------- 1) búsqueda de ventana
     candidatas = list(plan.ventanas)
@@ -412,8 +416,10 @@ def entrenar_motor(dp: DatasetPreparado, plan: PlanEntrenamiento, al_avance=None
                           series=series, exog_nombres=exog_nombres, exog_ultimo=exog_ultimo, busqueda=busqueda,
                           metricas_entidad=metricas, backtest=backtest, historial_perdida=hist,
                           epocas=len(hist["loss"]), segundos=0.0)
+    res.picos = {e: len(v) for e, v in picos.items()}
     avisar(0.8, "Comparando con otros modelos de pronóstico")
-    _torneo(res, ini_sel, ini_prueba, seleccion_lstm[ventana], avisar)
+    _torneo(res, ini_sel, ini_prueba, seleccion_lstm[ventana], avisar,
+            lambda: _suavizar(series, picos, lambda e, i: i >= ini_prueba[e]))
     res.segundos = round(time.time() - t0, 1)
     avisar(1.0, "Listo")
     return res
@@ -421,7 +427,25 @@ def entrenar_motor(dp: DatasetPreparado, plan: PlanEntrenamiento, al_avance=None
 
 # ---------------------------------------------------------------- torneo de motores
 
-def _torneo(res: ResultadoModelo, ini_sel, ini_prueba, seleccion_lstm, avisar):
+def _picos_por_entidad(dp: DatasetPreparado, series) -> dict:
+    """{entidad: [(posición, valor típico), ...]} de los picos detectados en la preparación."""
+    out = {}
+    for e, g in dp.picos.groupby("entidad"):
+        if e not in series:
+            continue
+        pos = {f: i for i, f in enumerate(series[e].fechas)}
+        out[e] = [(pos[f], t) for f, t in zip(pd.DatetimeIndex(g["fecha"]), g["tipico"]) if f in pos]
+    return out
+
+
+def _suavizar(series, picos, condicion):
+    for e, lista in picos.items():
+        for i, tipico in lista:
+            if condicion(e, i):
+                series[e].crudo[i, 0] = tipico
+
+
+def _torneo(res: ResultadoModelo, ini_sel, ini_prueba, seleccion_lstm, avisar, antes_del_futuro=None):
     """Compite la LSTM con los motores de la industria producto a producto (tramo de selección) y deja en el
     resultado la prueba y el pronóstico futuro del ganador de cada uno."""
     from . import motores as MT
@@ -472,6 +496,8 @@ def _torneo(res: ResultadoModelo, ini_sel, ini_prueba, seleccion_lstm, avisar):
         if ganador != MT.LSTM:
             res.metricas_entidad.loc[fila_m, "mape_1paso"] = np.nan
 
+    if antes_del_futuro:
+        antes_del_futuro()
     # pronóstico futuro de los ganadores que no son la LSTM (con toda la historia)
     h = plan.horizonte_max
     necesarios = {m for e in ents for m in ((pares[e] or ()) if ganadores[e] == MT.COMBINACION else (ganadores[e],))}

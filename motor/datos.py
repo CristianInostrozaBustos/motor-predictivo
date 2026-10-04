@@ -469,6 +469,7 @@ class Configuracion:
     frecuencia: str          # D / W / M / Q
     relleno_objetivo: str = "interpolar"   # "interpolar" o "cero"
     negativos_a_cero: bool = True
+    suavizar_picos: bool = False           # el modelo entrena con los picos aislados reemplazados por su valor típico
 
 
 @dataclass
@@ -479,6 +480,7 @@ class DatasetPreparado:
     variables_modelo: list    # objetivo + exógenas que entran al modelo, en orden
     reporte: list             # acciones de limpieza realizadas (texto)
     n_filas_original: int
+    picos: pd.DataFrame = field(default_factory=lambda: pd.DataFrame(columns=["entidad", "fecha", "valor", "tipico"]))
 
     @property
     def entidades(self) -> list:
@@ -591,7 +593,49 @@ def preparar(df_original: pd.DataFrame, config: Configuracion) -> DatasetPrepara
     df = df[columnas].sort_values(["entidad", "fecha"]).reset_index(drop=True)
 
     return DatasetPreparado(df=df, config=config, etiquetas=etiquetas, variables_modelo=variables_modelo,
-                            reporte=reporte, n_filas_original=n0)
+                            reporte=reporte, n_filas_original=n0, picos=detectar_picos(df, config.frecuencia))
+
+
+# ---------------------------------------------------------------- picos aislados
+
+VENTANA_PICOS = {"D": 15, "W": 9, "M": 7, "Q": 5}   # largo de la mediana móvil centrada
+DESFASE_ANUAL = {"D": 364, "W": 52, "M": 12, "Q": 4}
+
+
+def detectar_picos(df: pd.DataFrame, frecuencia: str) -> pd.DataFrame:
+    """Picos aislados de demanda por entidad.
+
+    Un período es pico si supera la mediana móvil centrada en más de 5 desviaciones robustas (MAD) y además
+    triplica esa mediana. No se marcan: períodos con promoción, picos que se repiten en la misma época del año
+    (estacionalidad), series intermitentes (30% o más de ceros) ni entidades donde los picos son frecuentes
+    (más de 3% de los períodos), porque ahí son parte del comportamiento normal.
+    """
+    cols = ["entidad", "fecha", "valor", "tipico"]
+    w, anual = VENTANA_PICOS[frecuencia], DESFASE_ANUAL[frecuencia]
+    filas = []
+    for e, g in df.groupby("entidad", sort=False):
+        y = g["objetivo"].to_numpy(float)
+        n = len(y)
+        if n < w or (y <= 0).mean() >= 0.30:
+            continue
+        serie = pd.Series(y)
+        med = serie.rolling(w, center=True, min_periods=w // 2 + 1).median().to_numpy()
+        mad = (serie - med).abs().rolling(w, center=True, min_periods=w // 2 + 1).median().to_numpy()
+        escala = np.maximum(1.4826 * mad, 0.1 * np.abs(med))
+        alto = (y > med + 5 * escala) & (y > 3 * med) & (med > 0)
+        if "promocion" in g.columns:
+            alto &= ~(g["promocion"].fillna(0).to_numpy() > 0)
+        idx = []
+        for i in np.where(alto)[0]:
+            otros = [j for j in (i - anual, i + anual) if 0 <= j < n]
+            if any(y[j] > 2 * med[j] for j in otros if med[j] > 0):
+                continue
+            idx.append(i)
+        if not idx or len(idx) > max(2, 0.03 * n):
+            continue
+        for i in idx:
+            filas.append(dict(entidad=e, fecha=g["fecha"].iloc[i], valor=float(y[i]), tipico=float(med[i])))
+    return pd.DataFrame(filas, columns=cols)
 
 
 # ---------------------------------------------------------------- diagnóstico

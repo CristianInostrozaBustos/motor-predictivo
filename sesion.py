@@ -47,10 +47,13 @@ def cargar_ejemplo(archivo):
     return leer(archivo, contenido)
 
 
+SUAVIZAR_PICOS_DEFECTO = True
+
+
 @st.cache_data(show_spinner="Preparando los datos...")
-def preparar_cacheado(df, roles_items, exogenas, frecuencia, relleno, negativos):
+def preparar_cacheado(df, roles_items, exogenas, frecuencia, relleno, negativos, suavizar=SUAVIZAR_PICOS_DEFECTO):
     cfg = D.Configuracion(roles=dict(roles_items), exogenas=list(exogenas), frecuencia=frecuencia,
-                          relleno_objetivo=relleno, negativos_a_cero=negativos)
+                          relleno_objetivo=relleno, negativos_a_cero=negativos, suavizar_picos=suavizar)
     return D.preparar(df, cfg)
 
 
@@ -58,6 +61,8 @@ def clave_dataset(dp) -> str:
     h = hashlib.sha256(pd.util.hash_pandas_object(dp.df, index=False).values.tobytes())
     h.update(str(dp.variables_modelo).encode())
     h.update(dp.config.frecuencia.encode())
+    if dp.config.suavizar_picos and len(dp.picos):     # solo cambia el modelo si hay picos que suavizar
+        h.update(b"picos")
     return h.hexdigest()[:16]
 
 
@@ -675,9 +680,11 @@ def abrir_pronostico(reg, progreso=None):
         if campo in cfg:
             st.session_state[f"{llave}_{k}"] = cfg[campo]
     st.session_state[f"serie_{k}"] = cfg.get("nombre_serie") or ""
+    st.session_state[f"suav_{k}"] = cfg.get("suavizar_picos", SUAVIZAR_PICOS_DEFECTO)
 
     dp = preparar_cacheado(df, tuple(sorted(roles.items())), tuple(cfg.get("exogenas", [])), cfg.get("frecuencia", "D"),
-                           cfg.get("relleno", "interpolar"), cfg.get("negativos", True))
+                           cfg.get("relleno", "interpolar"), cfg.get("negativos", True),
+                           cfg.get("suavizar_picos", SUAVIZAR_PICOS_DEFECTO))
     st.session_state["dp"] = dp
     st.session_state["config_actual"] = cfg
     clave = clave_dataset(dp)
