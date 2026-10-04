@@ -22,6 +22,7 @@ guardada = st.session_state.get("politica_guardada")
 guardada = guardada if guardada and guardada.get("clave") == clave else None
 previa = {f["entidad"]: f for f in (guardada or {}).get("tabla", [])}
 ajustes = st.session_state.setdefault("dec_ajustes", {}).setdefault(clave, {})
+inv_vivo = S.inventario_vivo(dp)
 param = {}
 for e in entidades:
     g = dp.df[dp.df["entidad"] == e]
@@ -30,6 +31,8 @@ for e in entidades:
     if e in previa:
         lt = previa[e].get("lead_time", lt) if previa[e].get("lead_time") is not None else lt
         inv = previa[e].get("inventario", inv) if previa[e].get("inventario") is not None else inv
+    if e in inv_vivo:
+        inv = inv_vivo[e][0]
     lt, inv = ajustes.get(e, {}).get("lt", lt), ajustes.get(e, {}).get("inv", inv)
     param[e] = {"lt": float(lt), "inv": inv}
 
@@ -58,6 +61,9 @@ with st.container(border=True, key="panel_control_dec"):
         st.caption(":material/info: Tu archivo no trae " + " ni ".join(
             x for x, falta in (("lead time", not tiene_lt), ("inventario", not tiene_inv)) if falta)
             + ": complétalo aquí" + (" para cada " + S.nombre_entidad(dp) if len(entidades) > 1 else "") + ".")
+    if ent in inv_vivo and inv_e is not None and abs(inv_e - inv_vivo[ent][0]) < 1e-9:
+        st.caption(f":material/sensors: Inventario{de_ent} recibido en vivo el "
+                   f"{pd.Timestamp(inv_vivo[ent][1]).strftime('%d/%m/%Y')}.")
     panel = st.container()
 ajustes[ent] = {"lt": float(lt_e), "inv": np.nan if inv_e is None else float(inv_e)}
 param[ent] = {"lt": float(lt_e), "inv": ajustes[ent]["inv"]}

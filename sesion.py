@@ -780,9 +780,153 @@ def abrir_pronostico(reg, progreso=None):
     st.session_state["horizonte"] = h
     st.session_state[f"h_{clave}"] = min(h, plan.horizonte_max)
     st.session_state["registro"] = {"id": reg["id"], "clave": clave, "nombre": reg["nombre"],
-                                    "escenarios": list(reg.get("escenarios") or [])}
+                                    "escenarios": list(reg.get("escenarios") or []), "vivo_link": cfg.get("vivo_link")}
+    st.session_state.pop("vivo_estado", None)
     pol = reg.get("politica")
     st.session_state["politica_guardada"] = {"clave": clave, **pol} if pol else None
     st.session_state.pop("politica", None)
     st.session_state.pop("escenario", None)
     return origen
+
+
+# ---------------------------------------------------------------- datos en vivo
+
+@st.cache_resource(show_spinner=False)
+def _crear_vivo(huella):
+    from motor import vivo as V
+    return V.crear(dict(huella) if huella else None)
+
+
+def almacen_vivo():
+    """Claves de integración y filas en vivo: Supabase si hay secrets, si no SQLite local."""
+    return _crear_vivo(_huella_config())
+
+
+def url_api():
+    try:
+        return str(st.secrets["api"]["url"]).rstrip("/") if "api" in st.secrets else None
+    except Exception:  # noqa: BLE001
+        return None
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def _descargar_link(url):
+    from motor import vivo as V
+    return V.descargar_link(url)
+
+
+def filas_del_link(url, roles):
+    """Filas en vivo leídas del link (Google Sheets o CSV/Excel público). Lanza ValueError con un mensaje claro."""
+    from motor import vivo as V
+    nombre, contenido = _descargar_link(url)
+    try:
+        df = leer(nombre, contenido)
+    except D.ArchivoInvalido as e:
+        raise ValueError(f"No se pudo leer la planilla del link: {e}") from None
+    return V.filas_desde_tabla(df, roles)
+
+
+def filas_vivas(reg_id, roles, link=None):
+    """Link primero y luego API/formulario: si coinciden fecha y serie, gana lo recibido por API o formulario."""
+    filas, error_link = [], None
+    if link:
+        try:
+            filas += filas_del_link(link, roles)
+        except Exception as e:  # noqa: BLE001
+            error_link = str(e) if isinstance(e, ValueError) else f"No se pudo leer el link ({type(e).__name__})."
+    filas += almacen_vivo().leer_filas(_usuario()["correo"], reg_id)
+    return filas, error_link
+
+
+def estado_vivo(refrescar=False):
+    """Para el pronóstico abierto: datos nuevos sin incorporar e inventario recibido en vivo."""
+    r = registro_actual()
+    if not r:
+        return None
+    est = st.session_state.get("vivo_estado")
+    if est and "periodos" in est and est["registro"] == r["id"] and est["clave"] == r["clave"] and not refrescar:
+        return est
+    from motor import vivo as V
+    cfg = st.session_state.get("config_actual") or {}
+    roles, dp = cfg.get("roles") or {}, st.session_state["dp"]
+    try:
+        filas, error_link = filas_vivas(r["id"], roles, r.get("vivo_link"))
+        pend = V.cambios_pendientes(st.session_state["df_raw"], roles, filas, dp.config.frecuencia)
+        inv = V.inventario_reciente(filas, bool(roles.get("entidad")))
+        est = dict(registro=r["id"], clave=r["clave"], pendientes=pend["n"], periodos=pend["periodos"],
+                   series=pend["series"], hasta=pend["hasta"], inventario=inv, error_link=error_link, error=None)
+    except Exception as e:  # noqa: BLE001
+        est = dict(registro=r["id"], clave=r["clave"], pendientes=0, periodos=0, series=0, hasta=None, inventario={},
+                   error_link=None, error=f"No se pudieron revisar los datos en vivo: {type(e).__name__}")
+    st.session_state["vivo_estado"] = est
+    return est
+
+
+def inventario_vivo(dp):
+    """{entidad: (inventario, fecha)} recibido en vivo para el pronóstico abierto."""
+    est = estado_vivo()
+    if not est:
+        return {}
+    return {e: v for e, v in est["inventario"].items() if e in set(dp.df["entidad"].unique())}
+
+
+def actualizar_con_datos_vivos(reg, progreso=None):
+    """Junta el archivo guardado con los datos en vivo, lo guarda como nueva versión y reentrena."""
+    from motor import almacen as A
+    from motor import repositorio as Rp
+    from motor import vivo as V
+    u = _usuario()
+    ruta = A.ruta_datos(Rp.id_usuario(u["correo"]), reg["id"])
+    contenido = almacen_persistente().leer(ruta)
+    if contenido is None:
+        raise FileNotFoundError("No se encontró el archivo de datos de este pronóstico.")
+    cfg = reg.get("config") or {}
+    roles = cfg.get("roles") or {}
+    base = leer(reg["archivo_nombre"], contenido)
+    filas, error_link = filas_vivas(reg["id"], roles, cfg.get("vivo_link"))
+    if error_link:
+        raise ValueError(error_link)
+    nuevo = V.combinar(base, roles, filas, cfg.get("frecuencia", "D"))
+    nombre = os.path.splitext(reg["archivo_nombre"])[0] + ".csv"
+    almacen_persistente().escribir(ruta, nuevo.to_csv(index=False).encode("utf-8"))
+    repositorio().actualizar(u["correo"], reg["id"], {"archivo_nombre": nombre})
+    reg = dict(reg, archivo_nombre=nombre)
+    origen = abrir_pronostico(reg, progreso)
+    dp, res = resultado()
+    repositorio().actualizar(u["correo"], reg["id"], dict(
+        clave_modelo=clave_dataset(dp), n_entidades=int(dp.df["entidad"].nunique()),
+        error_pct=(lambda v: None if pd.isna(v) else float(v))(res.metricas_entidad["wape"].mean())))
+    return origen
+
+
+def aviso_datos_nuevos(clave_boton="vivo_actualizar"):
+    """Aviso con botón cuando llegaron ventas nuevas al pronóstico abierto."""
+    est = estado_vivo()
+    if not est or (not est["pendientes"] and not est["error_link"]):
+        return
+    if est["error_link"]:
+        st.warning(f"Link de datos en vivo: {est['error_link']}", icon=":material/link_off:")
+    if not est["pendientes"]:
+        return
+    dp = st.session_state["dp"]
+    fi = dp.freq_info
+    p, ns = est["periodos"], est["series"]
+    hasta = pd.Timestamp(est["hasta"]).strftime("%d/%m/%Y") if est["hasta"] is not None else ""
+    en = f" en {E.num(ns)} {nombre_entidad(dp, ns != 1)}" if dp.df["entidad"].nunique() > 1 else ""
+    with st.container(border=True):
+        c1, c2 = st.columns([3, 1.2], vertical_alignment="center")
+        c1.markdown(f":material/sync: **Llegaron datos nuevos**: {E.num(p)} {fi['unidad'] if p == 1 else fi['unidad_pl']}"
+                    f" de ventas{en}{f' (hasta el {hasta})' if hasta else ''}. Actualiza para que el pronóstico "
+                    f"los use.")
+        if c2.button("Actualizar pronóstico", key=clave_boton, type="primary", icon=":material/refresh:",
+                     width="stretch"):
+            r = registro_actual()
+            reg = repositorio().obtener(_usuario()["correo"], r["id"])
+            barra = st.progress(0.0, text="Juntando los datos nuevos…")
+            try:
+                actualizar_con_datos_vivos(reg, lambda f, t: barra.progress(min(f, 1.0), text=t))
+                barra.empty()
+                st.rerun()
+            except Exception as e:  # noqa: BLE001
+                barra.empty()
+                st.error(f"No se pudo actualizar: {e}")

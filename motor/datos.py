@@ -500,6 +500,14 @@ AGREGACION = {
 }
 
 
+def alinear_fechas(fechas: pd.Series, frecuencia: str) -> pd.Series:
+    """Lleva cada fecha al inicio de su período (día, semana, mes o trimestre)."""
+    fq = FRECUENCIAS[frecuencia]["pandas"]
+    if frecuencia == "D":
+        return fechas.dt.normalize()
+    return fechas.dt.to_period(fq.split("-")[0] if frecuencia == "W" else fq[0]).dt.start_time
+
+
 def preparar(df_original: pd.DataFrame, config: Configuracion) -> DatasetPreparado:
     roles = config.roles
     if not roles.get("fecha") or not roles.get("objetivo"):
@@ -536,10 +544,7 @@ def preparar(df_original: pd.DataFrame, config: Configuracion) -> DatasetPrepara
 
     # alinear fecha al inicio del período
     fq = FRECUENCIAS[config.frecuencia]["pandas"]
-    if config.frecuencia == "D":
-        df["fecha"] = df["fecha"].dt.normalize()
-    else:
-        df["fecha"] = df["fecha"].dt.to_period(fq.split("-")[0] if config.frecuencia == "W" else fq[0]).dt.start_time
+    df["fecha"] = alinear_fechas(df["fecha"], config.frecuencia)
 
     # agregar duplicados (datos transaccionales o frecuencia más fina)
     n_antes = len(df)

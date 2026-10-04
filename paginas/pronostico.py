@@ -16,6 +16,7 @@ obj = dp.etiquetas["objetivo"]
 
 vista = S.vista("pronostico")
 E.titulo_compacto("Pronóstico", S.etiqueta_vista(vista))
+S.aviso_datos_nuevos()
 nom_col = S.mayus(S.nombre_entidad(dp))
 met = res.metricas_entidad.set_index("entidad")
 
