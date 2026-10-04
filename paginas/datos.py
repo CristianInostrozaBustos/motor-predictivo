@@ -159,7 +159,7 @@ if dp.df["objetivo"].notna().sum() == 0:
 st.session_state["dp"] = dp
 st.session_state["config_actual"] = dict(roles=roles, exogenas=list(exogenas), frecuencia=frecuencia, relleno=relleno,
                                          negativos=bool(negativos), nombre_serie=nombre_serie.strip(),
-                                         suavizar_picos=bool(suavizar))
+                                         suavizar_picos=bool(suavizar), inflacion=S.config_inflacion())
 plan = R.planificar(dp)
 fi = dp.freq_info
 n_ent = dp.df["entidad"].nunique()

@@ -25,21 +25,58 @@ E.titulo_compacto("Finanzas", S.etiqueta_vista(vista))
 val = S.valores(dp)
 
 
+def panel_inflacion():
+    from motor import inflacion as I
+    c = S.config_inflacion()
+    with st.container(border=True, key="panel_control_inflacion"):
+        st.markdown("**Inflación** · proyecta el precio y el costo hacia adelante")
+        c1, c2, c3 = st.columns(3)
+        modos = {"pais": "Según el país", "propio": "Valor propio", "sin": "Sin ajuste"}
+        modo = c1.selectbox("Ajuste", list(modos), index=list(modos).index(c["modo"]), format_func=modos.get,
+                            key="inf_modo")
+        nuevo = dict(c, modo=modo)
+        if modo == "pais":
+            paises = list(I.PAISES)
+            nuevo["pais"] = c2.selectbox("País", paises, index=paises.index(c["pais"]) if c["pais"] in paises else 0,
+                                         format_func=I.PAISES.get, key="inf_pais")
+            if nuevo["pais"] == "CHL":
+                fuentes = {"ipc12": "IPC últimos 12 meses", "fmi": "Proyección del FMI"}
+                nuevo["fuente"] = c3.selectbox("Fuente", list(fuentes),
+                                               index=list(fuentes).index(c["fuente"]) if c["fuente"] in fuentes else 0,
+                                               format_func=fuentes.get, key="inf_fuente")
+        elif modo == "propio":
+            nuevo["pct"] = float(c2.number_input("Inflación anual (%)", -20.0, 500.0, float(c["pct"]), 0.1,
+                                                 format="%.1f", key="inf_pct"))
+        S.guardar_config_inflacion(nuevo)
+        inf = S.inflacion_actual()
+        st.caption((":material/trending_up: " if inf["activa"] else ":material/pause: ") + S.mayus(inf["texto"]) + "."
+                   + (f" {inf['aviso']}" if inf["aviso"] else "")
+                   + " Las unidades pronosticadas no cambian: solo los montos en pesos.")
+
+
 def precio_y_costo(ent):
     st.caption("Se toman de tu archivo cuando vienen. Puedes asignarlos o corregirlos aquí; se usan en todo el sitio. "
                "Sin precio, todo se muestra en unidades.")
+    panel_inflacion()
     base = val.reset_index()[["entidad", "precio", "costo", "origen_precio", "origen_costo"]]
     base[["precio", "costo"]] = base[["precio", "costo"]].astype(float)
+    f_fin = fut[entidades[0]]["fecha"].iloc[-1]
+    factor_fin = float(S.factor_inflacion([f_fin])[0])
+    col_proy = f"Precio al {f_fin:%d/%m/%Y} ($)"
+    base[col_proy] = base["precio"] * factor_fin
     base = base.rename(columns={
         "entidad": nom, "precio": "Precio de venta ($)", "costo": "Costo unitario ($)",
         "origen_precio": "Precio desde", "origen_costo": "Costo desde"})
+    base = base[[nom, "Precio de venta ($)", col_proy, "Costo unitario ($)", "Precio desde", "Costo desde"]]
     editado = st.data_editor(
         E.destacar_fila(base, nom, ent), hide_index=True, width="stretch", key=f"valores_{S.clave_dataset(dp)}",
-        disabled=[nom, "Precio desde", "Costo desde"],
+        disabled=[nom, "Precio desde", "Costo desde", col_proy],
         column_config={
             "Precio de venta ($)": st.column_config.NumberColumn(min_value=0.0, step=1.0, format="%.0f"),
             "Costo unitario ($)": st.column_config.NumberColumn(min_value=0.0, step=1.0, format="%.0f",
                                                                 help="Lo que te cuesta cada unidad."),
+            col_proy: st.column_config.NumberColumn(format="%.0f", help="Precio de hoy proyectado con la inflación "
+                                                                         "al final del horizonte del pronóstico."),
         },
     )
     nuevos = editado.set_index(nom).rename(columns={"Precio de venta ($)": "precio", "Costo unitario ($)": "costo"})
@@ -64,13 +101,16 @@ def comparar_productos(ent):
     for e in entidades:
         u = fut[e]["P50"].sum()
         p_e, c_e = S.precio(e), S.costo(e)
-        fila = {nom: e, "Ventas (u.)": E.num(u), "_orden": u * (p_e or 0) if p_e else u}
+        u_inf = float((fut[e]["P50"].to_numpy() * S.factor_inflacion(fut[e]["fecha"])).sum())
+        fila = {nom: e, "Ventas (u.)": E.num(u), "_orden": u_inf * (p_e or 0) if p_e else u}
         if S.hay_precios():
-            fila["Ingresos"] = E.clp(u * p_e) if p_e else "—"
-            fila["Margen"] = E.clp(u * (p_e - c_e)) if (p_e and c_e) else "—"
+            fila["Ingresos"] = E.clp(u_inf * p_e) if p_e else "—"
+            fila["Margen"] = E.clp(u_inf * (p_e - c_e)) if (p_e and c_e) else "—"
         filas.append(fila)
     tabla = pd.DataFrame(filas).sort_values("_orden", ascending=False).drop(columns="_orden")
     st.dataframe(E.destacar_fila(tabla, nom, ent), hide_index=True, width="stretch")
+    if S.hay_precios():
+        st.caption(":material/trending_up: " + S.nota_inflacion())
 
 
 def insumos(ent):
@@ -122,15 +162,18 @@ else:
     con_precio = [e for e in ver if precios[e]]
     en_pesos = bool(con_precio)
 
+    infl = {e: S.factor_inflacion(fut[e]["fecha"]) for e in ver}
+
     def monto(e, serie):
-        return serie * (precios[e] or 0.0)
+        return serie.to_numpy() * (precios[e] or 0.0) * infl[e][:len(serie)]
 
     if vista == "Meta e ingresos":
         panel = st.container(border=True, key="panel_control_fin")
         tarjetas = st.container()
         unid = sum(fut[e]["P50"].sum() for e in ver)
         ingresos = {q: sum(monto(e, fut[e][q]).sum() for e in con_precio) for q in ("P10", "P50", "P90")}
-        margen = sum((fut[e]["P50"].sum() * (precios[e] - costos[e])) for e in con_precio if costos[e])
+        margen = sum(float((fut[e]["P50"].to_numpy() * infl[e]).sum()) * (precios[e] - costos[e])
+                     for e in con_precio if costos[e])
         hay_margen = any(costos[e] for e in con_precio)
         dias_total = H * dias_p
 
@@ -187,7 +230,7 @@ else:
             for e in ver:
                 f = fut[e].iloc[:t]
                 banda = float(((f["P90"] - f["P10"]) / (2 * P.Z_P10_P90)).clip(lower=0).mean()) * math.sqrt(t)
-                var_banda += (banda * ((precios[e] or 0.0) if en_pesos else 1.0)) ** 2
+                var_banda += (banda * (((precios[e] or 0.0) * float(infl[e][:t].mean())) if en_pesos else 1.0)) ** 2
             real = P.sigma_acumulado(None if _err_total is None else _err_total.to_numpy(), t)
             return max(math.sqrt(var_banda), real)
 
@@ -230,7 +273,7 @@ else:
 
         # gráfico acumulado: pronóstico con su rango contra la línea de la meta
         fechas = fut[ver[0]]["fecha"]
-        acum = np.cumsum(sum(((fut[e]["P50"] * (precios[e] or 0.0)) if en_pesos else fut[e]["P50"]).to_numpy() for e in ver))
+        acum = np.cumsum(sum((monto(e, fut[e]["P50"]) if en_pesos else fut[e]["P50"].to_numpy()) for e in ver))
         puntos = sorted(set(np.linspace(1, H, min(H, 12)).astype(int)))
         sd_t = np.interp(np.arange(1, H + 1), puntos, [sigma_total(t) for t in puntos])
         div, eje_y, hov_y = E.escala_pesos(max(acum.max(), meta)) if en_pesos else (1.0, "Unidades", "%{y:,.0f} u.")
@@ -249,7 +292,8 @@ else:
                               yaxis_title=eje_y, height=400)
             E.grafico(fig, key="fig_meta")
             st.caption("La probabilidad usa el error real que tuvo el modelo en la prueba con datos pasados, acumulado en el "
-                       f"período, no solo el rango de cada {fi['unidad']}.")
+                       f"período, no solo el rango de cada {fi['unidad']}."
+                       + (" " + S.nota_inflacion() if en_pesos else ""))
     else:
         hist = dp.df[dp.df["entidad"].isin(ver)].groupby("fecha")["objetivo"].sum()
         hist = hist[hist.index >= hist.index.max() - pd.Timedelta(days=730)]
@@ -286,8 +330,9 @@ for e in entidades:
     f = fut[e][["fecha", "P50", "P10", "P90"]].copy()
     f.insert(0, nom, e)
     if p_e:
+        f["Precio proyectado"] = p_e * S.factor_inflacion(f["fecha"])
         for q in ("P50", "P10", "P90"):
-            f[f"Ingresos {q}"] = f[q] * p_e
+            f[f"Ingresos {q}"] = f[q] * f["Precio proyectado"]
     f["fecha"] = f["fecha"].dt.date
     hoja.append(f.rename(columns={"fecha": "Fecha", "P50": "Ventas (u.)", "P10": "Ventas bajo (u.)",
                                   "P90": "Ventas alto (u.)"}))

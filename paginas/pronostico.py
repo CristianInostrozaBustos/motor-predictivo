@@ -69,10 +69,12 @@ else:
         if sin_p:
             st.caption(f":material/info: {len(sin_p)} sin precio no se incluyen en la vista en pesos "
                        "(asígnalo en Finanzas → Precio y costo).")
-        maximo = max(float((fut[e]["P90"] * (precios_v.get(e) or 0)).max()) for e in ver)
+        infl = {e: S.factor_inflacion(fut[e]["fecha"]) for e in ver}
+        maximo = max(float((fut[e]["P90"] * (precios_v.get(e) or 0) * infl[e]).max()) for e in ver)
         div, obj_v, hov = E.escala_pesos(maximo)
-        fut_v = {e: fut[e].assign(**{q: fut[e][q] * (precios_v.get(e) or 0) / div for q in ("P10", "P50", "P90")})
-                 for e in ver}
+        fut_v = {e: fut[e].assign(**{q: fut[e][q] * (precios_v.get(e) or 0) * infl[e] / div
+                                     for q in ("P10", "P50", "P90")}) for e in ver}
+        st.caption(":material/trending_up: " + S.nota_inflacion())
         df_v = dp.df[dp.df["entidad"].isin(ver)].copy()
         df_v["objetivo"] = df_v["objetivo"] * df_v["entidad"].map(precios_v).fillna(0) / div
         fmt = lambda v, _d=div: E.clp_corto(v * _d)  # noqa: E731

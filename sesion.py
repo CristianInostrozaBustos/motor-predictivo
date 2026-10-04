@@ -4,6 +4,7 @@ import hashlib
 import os
 import re
 
+import numpy as np
 import pandas as pd
 import streamlit as st
 
@@ -324,6 +325,89 @@ def costo_compra(e):
 def hay_precios():
     v = valores()
     return bool(len(v)) and v["precio"].notna().any()
+
+
+# ---------------------------------------------------------------- inflación (precios y costos hacia adelante)
+INFLACION_DEFECTO = {"modo": "pais", "pais": "CHL", "fuente": "ipc12", "pct": 3.0}
+
+
+@st.cache_data(ttl=6 * 3600, show_spinner=False)
+def _inflacion_fmi(iso):
+    from motor import inflacion as I
+    return I.inflacion_fmi(iso)
+
+
+@st.cache_data(ttl=6 * 3600, show_spinner=False)
+def _ipc_chile():
+    from motor import inflacion as I
+    return I.ipc_chile_12m()
+
+
+def config_inflacion() -> dict:
+    return {**INFLACION_DEFECTO, **(st.session_state.get("inflacion") or {})}
+
+
+def guardar_config_inflacion(cfg: dict):
+    if cfg == config_inflacion():
+        return
+    st.session_state["inflacion"] = dict(cfg)
+    actual = st.session_state.get("config_actual")
+    if actual is not None:
+        actual["inflacion"] = dict(cfg)
+        actualizar_registro(config=actual)
+
+
+def _base_inflacion():
+    dp = st.session_state.get("dp")
+    return dp.df["fecha"].max() if dp is not None else pd.Timestamp.today().normalize()
+
+
+def inflacion_actual() -> dict:
+    """dict(tasas: % anual constante o {año: %}, texto, aviso, activa) según la configuración del usuario."""
+    from motor import inflacion as I
+    c = config_inflacion()
+    if c["modo"] == "sin":
+        return dict(tasas=0.0, texto="sin ajuste por inflación (precios de hoy)", aviso=None, activa=False)
+    if c["modo"] == "propio":
+        return dict(tasas=float(c["pct"]), texto=f"{E.num(c['pct'], 1)}% anual (valor propio)", aviso=None,
+                    activa=True)
+    iso = c["pais"]
+    nombre = I.PAISES.get(iso, iso)
+    try:
+        if iso == "CHL" and c["fuente"] == "ipc12":
+            d = _ipc_chile()
+            return dict(tasas=d["pct"], activa=True, aviso=None,
+                        texto=f"Chile {E.num(d['pct'], 1)}% anual · IPC de los últimos 12 meses "
+                              f"(INE y Banco Central, a {d['hasta']:%m/%Y})")
+        d = _inflacion_fmi(iso)
+        base = _base_inflacion()
+        dp = st.session_state.get("dp")
+        dias = (horizonte() or 30) * (dp.freq_info["dias"] if dp is not None else 1)
+        anos = list(range((base + pd.Timedelta(days=1)).year, (base + pd.Timedelta(days=dias)).year + 1))
+        partes = " y ".join(f"{E.num(I.tasa_del_ano(d['tasas'], a), 1)}% en {a}" for a in anos)
+        return dict(tasas=d["tasas"], activa=True, aviso=None,
+                    texto=f"{nombre}: {partes} · proyección del FMI, {d['fuente']}")
+    except Exception:  # noqa: BLE001
+        fuente = "el IPC de Chile" if (iso == "CHL" and c["fuente"] == "ipc12") else "el FMI"
+        return dict(tasas=float(c["pct"]), activa=True,
+                    texto=f"{E.num(c['pct'], 1)}% anual",
+                    aviso=f"No se pudo consultar {fuente} en este momento; se usa {E.num(c['pct'], 1)}% anual.")
+
+
+def factor_inflacion(fechas) -> np.ndarray:
+    """Multiplicador de precios y costos para cada fecha futura respecto del último dato del historial."""
+    from motor import inflacion as I
+    inf = inflacion_actual()
+    if not inf["activa"]:
+        return np.ones(len(fechas))
+    return I.factores(fechas, _base_inflacion(), inf["tasas"])
+
+
+def nota_inflacion() -> str:
+    inf = inflacion_actual()
+    if not inf["activa"]:
+        return "Montos con precios de hoy, sin ajuste por inflación."
+    return f"Precios y costos ajustados por inflación: {inf['texto']}. Puedes cambiarlo en Finanzas → Precio y costo."
 
 
 def costo_mantener_pct():
@@ -686,6 +770,8 @@ def abrir_pronostico(reg, progreso=None):
                            cfg.get("suavizar_picos", SUAVIZAR_PICOS_DEFECTO))
     st.session_state["dp"] = dp
     st.session_state["config_actual"] = cfg
+    if cfg.get("inflacion"):
+        st.session_state["inflacion"] = dict(cfg["inflacion"])
     clave = clave_dataset(dp)
     plan = R.planificar(dp)
     res, origen = entrenar(clave, dp, plan, progreso)

@@ -273,7 +273,7 @@ if len(afectadas) > 1:
             "Unidades perdidas, sin ajustar": r.get("perdida_extra_sin", np.nan),
             f"{u_pl.capitalize()} extra sin stock, ajustando": r.get("quiebre_extra_aj", np.nan),
             **({"Ingresos vs. sin evento ($)": (lambda dd: dd.iloc[1]["ingresos"] - dd.iloc[0]["ingresos"])(
-                X.impacto_dinero(c, esc, S.precio(e), S.costo(e)))}
+                X.impacto_dinero(c, esc, S.precio(e), S.costo(e), inflacion=S.factor_inflacion(c.base["fecha"])))}
                if S.precio(e) else {}),
         })
     tabla = pd.DataFrame(filas)
@@ -346,7 +346,7 @@ if vista_pag == "Demanda":
                              line=dict(color=E.TINTA_MUTED, width=1.6, dash="dot"), hovertemplate="%{y:,.0f}"))
     precio_ent = S.precio(ent)
     if precio_ent:
-        pv = X.precio_por_periodo(precio_ent, esc, len(c.base))
+        pv = X.precio_por_periodo(precio_ent, esc, len(c.base)) * S.factor_inflacion(c.base["fecha"])
         fig.add_trace(go.Scatter(x=c.base["fecha"], y=pv, name="Precio de venta", yaxis="y2", mode="lines",
                                  line=dict(color=E.AQUA, width=1.8, shape="hv"),
                                  hovertemplate="$%{y:,.0f}"))
@@ -439,10 +439,11 @@ if vista_pag == "Impacto en dinero" and S.precio(ent):
                "Probablemente la columna marcada como costo es el precio de un insumo (por ejemplo, por kilo) y no el costo "
                f"de una unidad de {ent}. El margen se omite: ingresa el costo real en <b>Precio y costo usados</b>.")
         costo_ent = None
-    din = X.impacto_dinero(c, esc, precio_ent, costo_ent, costo_arch)
+    din = X.impacto_dinero(c, esc, precio_ent, costo_ent, costo_arch, inflacion=S.factor_inflacion(c.base["fecha"]))
     if din is None:
         st.caption(":material/info: Ingresa el precio de venta para calcular ingresos, ventas perdidas y margen.")
     else:
+        st.caption(":material/trending_up: " + S.nota_inflacion())
         d = din.set_index("mundo")
         b = d.iloc[0]
         sa = d.loc["Con el evento, sin ajustar"]
@@ -551,7 +552,7 @@ if hay_inv:
     det["Inventario con evento, ajustando"] = c.sim_ajustada["inventario"].to_numpy()
     det["Pedido, ajustando"] = c.sim_ajustada["pedido"].to_numpy()
 if S.precio(ent):
-    det["Precio de venta"] = X.precio_por_periodo(S.precio(ent), esc, len(det))
+    det["Precio de venta"] = X.precio_por_periodo(S.precio(ent), esc, len(det)) * S.factor_inflacion(det["fecha"])
 det["fecha"] = det["fecha"].dt.date
 if din is not None:
     hojas["Impacto en dinero"] = vista.rename(columns={"": "Mundo"}).round(0)

@@ -287,7 +287,7 @@ def precio_por_periodo(precio: float, esc: Escenario, n: int) -> np.ndarray:
 
 
 def impacto_dinero(comp: Comparacion, esc: Escenario, precio: float | None, costo: float | None,
-                   costo_principal: float | None = None) -> pd.DataFrame | None:
+                   costo_principal: float | None = None, inflacion=None) -> pd.DataFrame | None:
     """Ingresos, costo y margen de cada mundo sobre el horizonte analizado.
 
     Las unidades vendidas son la demanda atendida (la simulación con venta perdida) o, si no hay
@@ -297,8 +297,9 @@ def impacto_dinero(comp: Comparacion, esc: Escenario, precio: float | None, cost
     if precio is None or not np.isfinite(precio) or precio <= 0:
         return None
     n = len(comp.base)
-    p_base = np.full(n, float(precio))
-    p_esc = precio_por_periodo(precio, esc, n)
+    f = np.ones(n) if inflacion is None else np.asarray(inflacion, float)[:n]   # precios y costos con inflación
+    p_base = np.full(n, float(precio)) * f
+    p_esc = precio_por_periodo(precio, esc, n) * f
     c = float(costo) if costo is not None and np.isfinite(costo) and costo > 0 else None
 
     def vendidas(sim, pron):
@@ -324,10 +325,10 @@ def impacto_dinero(comp: Comparacion, esc: Escenario, precio: float | None, cost
         if nombre.endswith("alternativo") and c_pri and sim is not None:
             c_alt = esc.costo_alternativo()
             ped = sim["pedido"].to_numpy()
-            sobrecosto = float(ped[esc.desde:esc.hasta].sum() * max(0.0, c_alt - c_pri))
+            sobrecosto = float((ped[esc.desde:esc.hasta] * f[esc.desde:esc.hasta]).sum() * max(0.0, c_alt - c_pri))
         fila["sobrecosto"] = sobrecosto
         if c is not None:
-            fila["costo"] = float(v.sum() * c) + sobrecosto
+            fila["costo"] = float((v * f).sum() * c) + sobrecosto
             fila["margen"] = fila["ingresos"] - fila["costo"]
         filas.append(fila)
     return pd.DataFrame(filas)
