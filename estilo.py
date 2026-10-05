@@ -163,6 +163,26 @@ div[data-testid="stVerticalBlockBorderWrapper"] { background: #ffffff; }
 /* Sidebar */
 section[data-testid="stSidebar"] { background: linear-gradient(180deg, #050c22 0%, #071431 100%); border-right: 1px solid rgba(255,255,255,0.06); }
 section[data-testid="stSidebar"] .ficha .v { color: #ffffff; }
+section[data-testid="stSidebar"] [data-testid="stPageLink"] a, section[data-testid="stSidebar"] [data-testid="stPageLink"] a span,
+section[data-testid="stSidebar"] [data-testid="stPageLink"] a p,
+section[data-testid="stSidebar"] [data-testid="stMarkdownContainer"], section[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p,
+section[data-testid="stSidebar"] [data-testid="stRadio"] label p, section[data-testid="stSidebar"] [data-testid="stHeadingWithActionElements"] {
+  color: #e6edff !important; }
+section[data-testid="stSidebar"] [data-testid="stCaptionContainer"], section[data-testid="stSidebar"] [data-testid="stCaptionContainer"] p {
+  color: rgba(205,218,245,0.6) !important; }
+section[data-testid="stSidebar"] [data-testid="stPageLink"] a:hover { background: rgba(255,255,255,0.06); }
+section[data-testid="stSidebar"] [data-testid="stPageLink"] a[aria-current="page"],
+section[data-testid="stSidebar"] [data-testid="stPageLink-NavLink"][aria-current="page"] { background: rgba(255,255,255,0.08) !important; }
+section[data-testid="stSidebar"] .stButton > button[kind="secondary"] { background: rgba(255,255,255,0.06); color: #e6edff;
+  border: 1px solid rgba(255,255,255,0.18); }
+section[data-testid="stSidebar"] .stButton > button[kind="secondary"]:hover { background: rgba(255,255,255,0.12); color: #ffffff;
+  border-color: rgba(255,255,255,0.3); }
+section[data-testid="stSidebar"] .stButton > button[kind="secondary"] p { color: inherit; }
+section[data-testid="stSidebar"] hr { border-color: rgba(255,255,255,0.12); }
+section[data-testid="stSidebar"] [data-testid="stSidebarHeader"] button,
+section[data-testid="stSidebar"] [data-testid="stSidebarHeader"] svg,
+section[data-testid="stSidebar"] [data-testid="stSidebarCollapseButton"] svg { color: rgba(205,218,245,0.75) !important;
+  fill: currentColor; }
 section[data-testid="stSidebar"] .ficha .l { color: rgba(205,218,245,0.55); }
 section[data-testid="stSidebar"] .marca { padding: 4px 0 10px 0; }
 
