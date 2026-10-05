@@ -218,7 +218,7 @@ section[data-testid="stSidebar"] [data-testid="stVerticalBlock"] { gap: 0.35rem;
 .hero .chip { background: rgba(255,255,255,0.14); border: 1px solid rgba(255,255,255,0.22);
     padding: 5px 12px; border-radius: 999px; font-size: 0.8rem; font-weight: 500; }
 
-.portada { position: relative; padding: 56px 0 40px 0; margin-bottom: 4px; }
+.portada { position: relative; padding: 4px 0 28px 0; margin-bottom: 4px; }
 .portada:before { content: ""; position: absolute; right: -40px; top: -30px; width: 420px; height: 420px; z-index: 0;
     border-radius: 50%; background: radial-gradient(circle, rgba(42,120,214,0.13), rgba(42,120,214,0) 68%);
     pointer-events: none; }
