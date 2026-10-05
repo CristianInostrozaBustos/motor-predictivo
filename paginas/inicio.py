@@ -1,44 +1,23 @@
 import streamlit as st
 
 import estilo as E
+from carga import bloque_carga
 from sesion import panel_dataset
 
 panel_dataset()
 
 st.markdown(
     f"""
-    <div class="hero">
-      <div class="eyebrow">{E.NOMBRE_APP}</div>
-      <h1>Pronostica la demanda, decide cuánto abastecer y mide su impacto en plata</h1>
-      <p>Sube tu historial de ventas o demanda. El motor detecta la estructura de los datos, compara varios
-      modelos de pronóstico y se queda con el mejor para cada producto, y entrega pronósticos con rango de
-      incertidumbre, política de inventario, su impacto financiero y escenarios what-if.</p>
-      <div class="chips">
-        <span class="chip">CSV o Excel</span>
-        <span class="chip">Diario, semanal o mensual</span>
-        <span class="chip">Una serie o miles</span>
-        <span class="chip">Pronóstico P10 · P50 · P90</span>
-      </div>
+    <div class="portada">
+      <div class="marca-portada"><span class="punto"></span>{E.NOMBRE_APP}</div>
+      <h1>Anticipa tu demanda.<br><b class="acento">Abastece con precisión.</b></h1>
+      <p>Sube tu historial y obtén el pronóstico de cada producto, cuánto y cuándo pedir, y su impacto
+      financiero.</p>
+      <div class="rasgos">CSV, Excel o Google Sheets<i>·</i>Diario, semanal o mensual<i>·</i>De una a miles de series</div>
     </div>
     """,
     unsafe_allow_html=True,
 )
 
-st.write("")
-st.markdown("### Sube o carga tus datos")
-from carga import bloque_carga  # noqa: E402
-
+st.markdown('<div class="etiqueta-portada">Empieza con tus datos</div>', unsafe_allow_html=True)
 bloque_carga()
-
-st.write("")
-st.markdown("### Cómo funciona")
-pasos = [
-    ("1", "Sube tus datos", "CSV o Excel con tu historial. El sistema reconoce las columnas y limpia huecos y duplicados."),
-    ("2", "Mira el pronóstico", "El valor más probable y el rango en que se moverá la demanda, con su precisión medida."),
-    ("3", "Decide qué pedir", "Cuánto pedir y cuándo, en automático o decidiendo tú, para cada producto."),
-    ("4", "Mide el impacto en plata", "Ingresos, margen, capital en inventario y la probabilidad de cumplir tu meta."),
-]
-cols = st.columns(4)
-for col, (n, titulo, texto) in zip(cols, pasos):
-    col.markdown(f'<div class="paso"><div class="n">{n}</div><h4>{titulo}</h4><p>{texto}</p></div>',
-                 unsafe_allow_html=True)

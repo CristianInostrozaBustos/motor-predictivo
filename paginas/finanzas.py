@@ -1,4 +1,4 @@
-"""Finanzas: lo que el pronóstico de demanda significa en plata (ingresos, margen, metas, capital e insumos)."""
+"""Finanzas: lo que el pronóstico de demanda significa en dinero (ingresos, margen, metas, capital e insumos)."""
 
 import math
 

@@ -85,6 +85,3 @@ def bloque_carga():
                     st.error(f"No pudimos leer el archivo: {e}")
     if ir:
         st.switch_page("paginas/datos.py")
-    if st.session_state.get("df_raw") is not None:
-        st.page_link("paginas/datos.py", label=f"Continuar con {st.session_state.get('nombre_dataset', 'tus datos')}",
-                     icon=":material/arrow_forward:")

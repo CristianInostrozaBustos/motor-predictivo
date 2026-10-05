@@ -218,6 +218,25 @@ section[data-testid="stSidebar"] [data-testid="stVerticalBlock"] { gap: 0.35rem;
 .hero .chip { background: rgba(255,255,255,0.14); border: 1px solid rgba(255,255,255,0.22);
     padding: 5px 12px; border-radius: 999px; font-size: 0.8rem; font-weight: 500; }
 
+.portada { position: relative; padding: 56px 0 40px 0; margin-bottom: 4px; }
+.portada:before { content: ""; position: absolute; right: -40px; top: -30px; width: 420px; height: 420px; z-index: 0;
+    border-radius: 50%; background: radial-gradient(circle, rgba(42,120,214,0.13), rgba(42,120,214,0) 68%);
+    pointer-events: none; }
+.portada > * { position: relative; z-index: 1; }
+.portada .marca-portada { display: inline-flex; align-items: center; gap: 8px; font-size: .78rem; font-weight: 600;
+    letter-spacing: .08em; text-transform: uppercase; color: #52514e; background: #ffffff;
+    border: 1px solid rgba(11,11,11,0.08); border-radius: 999px; padding: 6px 14px 6px 10px; }
+.portada .punto { width: 8px; height: 8px; border-radius: 50%; background: #2a78d6;
+    box-shadow: 0 0 0 4px rgba(42,120,214,0.15); }
+.portada h1 { font-size: 3.1rem !important; line-height: 1.08; letter-spacing: -0.02em; font-weight: 800;
+    color: #0b0b0b !important; margin: 26px 0 18px 0; padding: 0; }
+.portada h1 .acento { color: #1c5cab; font-weight: 800; }
+.portada p { font-size: 1.15rem; color: #52514e; max-width: 620px; line-height: 1.55; margin: 0; }
+.portada .rasgos { margin-top: 22px; font-size: .88rem; color: #8a8985; }
+.portada .rasgos i { font-style: normal; margin: 0 10px; color: #c4c3bf; }
+.etiqueta-portada { font-size: .76rem; font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
+    color: #8a8985; margin: 8px 0 8px 2px; }
+
 .encabezado { margin: 4px 0 18px 0; }
 .encabezado .eyebrow { font-size: 0.76rem; letter-spacing: 0.1em; text-transform: uppercase; color: #1c5cab; font-weight: 700; }
 .encabezado h1 { font-size: 2rem !important; margin: 4px 0 6px 0; padding: 0; }
@@ -247,6 +266,8 @@ section[data-testid="stSidebar"] [data-testid="stVerticalBlock"] { gap: 0.35rem;
 @media (max-width: 640px) {
     .hero { padding: 28px 22px; }
     .hero h1 { font-size: 1.6rem !important; }
+    .portada { padding: 28px 0 24px 0; }
+    .portada h1 { font-size: 2.1rem !important; }
 }
 </style>
 """
