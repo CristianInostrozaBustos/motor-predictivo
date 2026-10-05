@@ -703,8 +703,8 @@ def requiere_pronostico():
             st.info("Primero carga tus datos en **Inicio** y genera el pronóstico.", icon=":material/info:")
             st.page_link("paginas/inicio.py", label="Ir a Inicio", icon=":material/arrow_forward:")
         else:
-            st.info("Genera el pronóstico en **1. Datos**.", icon=":material/info:")
-            st.page_link("paginas/datos.py", label="Ir a 1. Datos", icon=":material/arrow_forward:")
+            st.info("Genera el pronóstico en **2. Pronóstico**.", icon=":material/info:")
+            st.page_link("paginas/pronostico.py", label="Ir a 2. Pronóstico", icon=":material/arrow_forward:")
         st.stop()
     return dp, res
 
