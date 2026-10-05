@@ -1,10 +1,4 @@
-"""API de datos en vivo del Motor Predictivo (FastAPI, se publica en Render).
-
-Recibe filas nuevas (ventas, inventario, precio) con la clave de integración de un pronóstico y las guarda
-en Supabase. El sitio las junta con el archivo original al abrir el pronóstico.
-
-Variables de entorno: SUPABASE_URL, SUPABASE_SERVICE_KEY (sin ellas usa SQLite local, solo para pruebas).
-"""
+# La API de los datos en vivo del Motor Predictivo (FastAPI, se publica en Render).
 
 import os
 import sys
@@ -13,7 +7,7 @@ from fastapi import Body, FastAPI, Header, HTTPException, Query
 from fastapi.responses import JSONResponse
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from motor import vivo as V  # noqa: E402
+from motor import vivo as V 
 
 app = FastAPI(title="Motor Predictivo · API de datos", version="1.0",
               description="Envía ventas, inventario o precios nuevos a un pronóstico guardado.")
@@ -69,7 +63,7 @@ def recibir(filas: list | dict = Body(..., examples=[{"filas": [
         return JSONResponse(status_code=422, content={"guardadas": 0, "errores": e.errores})
     try:
         n = ALMACEN.guardar_filas(usuario, registro, limpias, origen="api")
-    except Exception:  # noqa: BLE001
+    except Exception:
         raise HTTPException(503, "No se pudieron guardar las filas. Intenta de nuevo.") from None
     return {"guardadas": n, "con_ventas": sum(f["objetivo"] is not None for f in limpias),
             "con_inventario": sum(f["inventario"] is not None for f in limpias)}
