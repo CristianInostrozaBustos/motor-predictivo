@@ -1,0 +1,36 @@
+# Entrenamiento en segundo plano: a pedido del sitio (workflow_dispatch) y una vez al día (schedule).
+name: Entrenar
+
+on:
+  workflow_dispatch:
+    inputs:
+      trabajo:
+        description: "Id del trabajo (vacío = revisar todos los análisis conectados)"
+        required: false
+        default: ""
+  schedule:
+    - cron: "17 10 * * *"     # todos los días 10:17 UTC (madrugada en Chile)
+
+concurrency:
+  group: entrenar-${{ github.event.inputs.trabajo || 'programado' }}
+  cancel-in-progress: false
+
+jobs:
+  entrenar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Instalar
+        run: pip install -r requirements.txt
+      - name: Entrenar
+        env:
+          TRABAJO: ${{ github.event.inputs.trabajo }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          SUPABASE_BUCKET: ${{ secrets.SUPABASE_BUCKET }}
+        run: python entrenador.py
