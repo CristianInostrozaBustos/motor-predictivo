@@ -338,13 +338,6 @@ def nota(texto):
     st.markdown(f'<div class="nota">{texto}</div>', unsafe_allow_html=True)
 
 
-def pie_pagina():
-    st.markdown(
-        '<div class="pie">Motor Predictivo de Abastecimiento · Proyecto de título, Ingeniería Industrial UNAB</div>',
-        unsafe_allow_html=True,
-    )
-
-
 MESES_CORTOS = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"]
 
 
