@@ -21,13 +21,12 @@ if not plan.viable:
     st.error(f"El historial es demasiado corto para pronosticar: se necesitan al menos "
              f"{R.minimo_registros(dp.config.frecuencia)} {dp.freq_info['unidad_pl']} por {S.nombre_entidad(dp)}.")
     st.stop()
-UNIDADES, DINERO = "Unidades", "Dinero ($)"
+UNIDADES, DINERO = "Unidades", "Ingresos ($)"
 
 
 def _chip_unidades(fila):
     if S.vista("pronostico") != "Precisión" and S.hay_precios():
-        S.chip_opcion(fila, "Ver en: ", [UNIDADES, DINERO], estado="ver_en", key="unid_pron",
-                      icono=":material/payments:")
+        S.chip_opcion(fila, "Ver: ", [UNIDADES, DINERO], estado="ver_en", key="unid_pron")
 
 
 bloque_horizonte(dp, plan, extra=_chip_unidades)
