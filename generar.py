@@ -8,7 +8,8 @@ import sesion as S
 from motor import datos as D
 
 
-def bloque_horizonte(dp, plan):
+def bloque_horizonte(dp, plan, extra=None):
+    """extra(fila): agrega más etiquetas a la misma fila (por ejemplo, ver en unidades o dinero)."""
     fi = dp.freq_info
     clave = S.clave_dataset(dp)
     _, res = S.resultado()
@@ -35,6 +36,8 @@ def bloque_horizonte(dp, plan):
             chips.append("Modo abierto: inicia sesión para guardarlo")
         fila.markdown('<div class="resumen-chips" style="margin:0">' + "".join(f"<span>{c}</span>" for c in chips)
                       + "</div>", unsafe_allow_html=True, width="content")
+        if extra:
+            extra(fila)
         for aviso in st.session_state.pop("avisos_almacen", []):
             if S.modo_dev():
                 st.warning(aviso, icon=":material/cloud_off:")

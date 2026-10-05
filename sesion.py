@@ -620,6 +620,23 @@ def titulo_seleccion(sel, dp):
 MAX_BOTONES = 12   # con más opciones que esto, los botones no caben y se usa una lista desplegable
 
 
+def chip_opcion(contenedor, prefijo, opciones, estado, key, icono=None):
+    """Etiqueta compacta que despliega las opciones (mismo estilo que el horizonte del pronóstico)."""
+    opciones = list(opciones)
+    if st.session_state.get(estado) not in opciones:
+        st.session_state[estado] = opciones[0]
+    kw = f"_chip_{key}"
+    st.session_state[kw] = st.session_state[estado]
+
+    def _sync():
+        st.session_state[estado] = st.session_state[kw]
+
+    with contenedor.container(key=f"chip_{key}", width="content"), st.popover(
+            f"{prefijo}{st.session_state[estado]}", icon=icono, width="content"):
+        st.radio(prefijo.strip(": ") or "Opción", opciones, key=kw, on_change=_sync, label_visibility="collapsed")
+    return st.session_state[estado]
+
+
 def elegir_uno(etiqueta, opciones, key, estado, defecto=None, formato=None):
     """Selector de UNA opción con el mismo estilo en todo el sitio: botones (pills) si caben,
     lista desplegable si hay muchas. `estado` es la clave de session_state donde se recuerda la elección."""

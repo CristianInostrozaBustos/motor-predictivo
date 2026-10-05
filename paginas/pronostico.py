@@ -21,7 +21,16 @@ if not plan.viable:
     st.error(f"El historial es demasiado corto para pronosticar: se necesitan al menos "
              f"{R.minimo_registros(dp.config.frecuencia)} {dp.freq_info['unidad_pl']} por {S.nombre_entidad(dp)}.")
     st.stop()
-bloque_horizonte(dp, plan)
+UNIDADES, DINERO = "Unidades", "Dinero ($)"
+
+
+def _chip_unidades(fila):
+    if S.vista("pronostico") != "Precisión" and S.hay_precios():
+        S.chip_opcion(fila, "Ver en: ", [UNIDADES, DINERO], estado="ver_en", key="unid_pron",
+                      icono=":material/payments:")
+
+
+bloque_horizonte(dp, plan, extra=_chip_unidades)
 dp, res = S.resultado()
 S.panel_dataset()
 if res is None:
@@ -70,13 +79,7 @@ else:
     ver = list(sel)
 
     # ------------------------------------------------------------ panel de control
-    en_pesos = False
-    if vista != "Precisión" and S.hay_precios():
-        with st.container(border=True, key="panel_control_pron"):
-            c1, _ = st.columns([1, 3])
-            with c1:
-                en_pesos = S.elegir_uno("Ver en", ["Unidades", "Pesos ($)"], key="unid_pron",
-                                        estado="ver_en") == "Pesos ($)"
+    en_pesos = vista != "Precisión" and S.hay_precios() and st.session_state.get("ver_en") == DINERO
     if en_pesos:
         precios_v = {e: S.precio(e) for e in ver}
         sin_p = [e for e in ver if not precios_v[e]]
