@@ -252,7 +252,7 @@ with st.container(border=True):
                f"El pronóstico empieza el {(f1 + pd.tseries.frequencies.to_offset(D.FRECUENCIAS[dp.config.frecuencia]['pandas'])):%d/%m/%Y}.")
     en_cola = S.trabajo_activo() if res is None else None
     if res is None and en_cola is not None:
-        st.caption(":material/cloud_sync: Generando en segundo plano. Puedes seguir explorando tus datos o cerrar el "
+        st.caption(":material/cloud_sync: Generando pronóstico en segundo plano"
                    "sitio: el pronóstico queda en **Mis pronósticos**.")
     elif res is None:
         fondo = S.segundo_plano_disponible() and not S.modelo_guardado(clave)
