@@ -1164,7 +1164,8 @@ def panel_trabajo():
     resto = (f"faltan unos {max(1, round(falta / 60))} min" if falta > 45 else "casi listo")
     with st.container(border=True):
         c1, c2 = st.columns([2, 1.5], vertical_alignment="center")
-        c1.markdown(f":material/cloud_sync: **Actualizando tu pronóstico en segundo plano** · {reloj} · {resto}")
+        accion = "Entrenando" if t.get("origen") == "nuevo" else "Actualizando"
+        c1.markdown(f":material/cloud_sync: **{accion} tu pronóstico en segundo plano** · {reloj} · {resto}")
         c2.progress(min(0.97, max(float(t.get("progreso") or 0.0), lleva / total if total else 0.0)))
 
 
