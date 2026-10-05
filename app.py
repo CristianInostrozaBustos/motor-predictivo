@@ -26,7 +26,7 @@ if S.modo_dev():
     secciones["Desarrollador"] = [st.Page("paginas/tecnico.py", title="Detalles técnicos")]
 grupo_datos = (p_datos, p_act, p_an)
 
-st.logo("logo.png", size="large")
+st.logo("logo_marca.png", size="large", icon_image="logo.png")
 
 pg = st.navigation([inicio] + [p for ps in secciones.values() for p in ps] + [p_act, p_an], position="hidden")
 urls_datos = [x.url_path for x in grupo_datos]
