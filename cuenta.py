@@ -75,10 +75,10 @@ def caja_cuenta():
             inicial = (u["nombre"] or "?")[0].upper()
             st.markdown(
                 f"""<div style="display:flex;align-items:center;gap:10px;margin:12px 0 14px 8px">
-                  <div style="width:32px;height:32px;border-radius:50%;background:#1c5cab;color:#fff;display:flex;
+                  <div style="width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,#4f9bff,#9a7bf0);color:#fff;display:flex;
                     align-items:center;justify-content:center;font-weight:700">{inicial}</div>
                   <div style="line-height:1.2"><div style="font-weight:600;font-size:.9rem">{u['nombre']}</div>
-                  <div style="font-size:.75rem;color:#898781;word-break:break-all">{u['correo']}</div></div>
+                  <div style="font-size:.75rem;color:rgba(205,218,245,0.6);word-break:break-all">{u['correo']}</div></div>
                 </div>""",
                 unsafe_allow_html=True,
             )
