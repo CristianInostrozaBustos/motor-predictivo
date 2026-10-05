@@ -26,7 +26,7 @@ if S.modo_dev():
     secciones["Desarrollador"] = [st.Page("paginas/tecnico.py", title="Detalles técnicos")]
 grupo_datos = (p_datos, p_act, p_an)
 
-st.logo("favicon.png", size="large")
+st.logo("logo.png", size="large")
 
 pg = st.navigation([inicio] + [p for ps in secciones.values() for p in ps] + [p_act, p_an], position="hidden")
 with st.sidebar:
