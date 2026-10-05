@@ -67,4 +67,3 @@ if pg.url_path != p_datos.url_path:
 S.panel_trabajo()
 S.aviso_listo()
 pg.run()
-E.pie_pagina()
