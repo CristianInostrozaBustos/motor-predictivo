@@ -173,7 +173,7 @@ if plan.entidades_excluidas:
 _, res = S.resultado()
 if res is not None:
     S.actualizar_registro(config=st.session_state["config_actual"])
-st.page_link("paginas/pronostico.py", label="Ver pronóstico" if res is not None else "Siguiente: generar el pronóstico",
-             icon=":material/arrow_forward:")
+else:
+    st.page_link("paginas/pronostico.py", label="Siguiente: generar el pronóstico", icon=":material/arrow_forward:")
 
 S.panel_dataset()
