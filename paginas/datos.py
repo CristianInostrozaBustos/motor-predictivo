@@ -252,8 +252,7 @@ with st.container(border=True):
                f"El pronóstico empieza el {(f1 + pd.tseries.frequencies.to_offset(D.FRECUENCIAS[dp.config.frecuencia]['pandas'])):%d/%m/%Y}.")
     en_cola = S.trabajo_activo() if res is None else None
     if res is None and en_cola is not None:
-        st.caption(":material/cloud_sync: Generando pronóstico en segundo plano"
-                   "sitio: el pronóstico queda en **Mis pronósticos**.")
+        st.caption(":material/cloud_sync: Generando en segundo plano")
     elif res is None:
         fondo = S.segundo_plano_disponible() and not S.modelo_guardado(clave)
         generar = st.button("Generar pronóstico", type="primary", icon=":material/auto_graph:")
@@ -276,8 +275,7 @@ with st.container(border=True):
         if S.modelo_guardado(clave):
             st.caption(":material/bolt: Estos datos ya se analizaron antes: el pronóstico sale al instante.")
         elif fondo:
-            st.caption(":material/cloud_sync: Se entrena en segundo plano (entre 3 y 8 minutos): puedes seguir usando el "
-                       "sitio o cerrarlo, y el pronóstico queda guardado en **Mis pronósticos**.")
+            st.caption(":material/cloud_sync: Se entrena en segundo plano (entre 3 y 8 minutos)")
         else:
             st.caption(":material/schedule: Toma entre 1 y 4 minutos según el tamaño de tus datos. El sistema elige solo "
                        "la mejor forma de entrenar para tu dataset, y la guarda para la próxima vez.")

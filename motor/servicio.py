@@ -114,17 +114,17 @@ def datos_actualizados(reg, almacen, almacen_vivo, descargar):
     return nuevo, cfg, nombre, (nuevo.to_csv(index=False).encode("utf-8") if reescribir else None)
 
 
-def entrenar_registro(reg, almacen, repo, almacen_vivo, descargar, progreso=None, incorporar=True):
+def entrenar_registro(reg, almacen, repo, almacen_vivo, descargar, progreso=None, incorporar=True, revisar_corte=None):
     """Pipeline completo de un análisis guardado: junta datos nuevos, entrena (o reutiliza) y actualiza el registro.
     Devuelve (clave, origen)."""
     from . import almacen as A
     from . import modelo as M
     from . import reglas as R
     from . import repositorio as Rp
+    contenido = None
     if incorporar:
         df, cfg, nombre, contenido = datos_actualizados(reg, almacen, almacen_vivo, descargar)
         if contenido is not None:
-            almacen.escribir(A.ruta_datos(Rp.id_usuario(reg["usuario"]), reg["id"]), contenido)
             df = D.leer_archivo(nombre, contenido)       # igual a lo que leerá el sitio al abrirlo
     else:
         cfg, nombre = dict(reg.get("config") or {}), reg["archivo_nombre"]
@@ -135,6 +135,8 @@ def entrenar_registro(reg, almacen, repo, almacen_vivo, descargar, progreso=None
     if not A.existe_modelo(almacen, clave):
         plan = R.planificar(dp)
         res = M.entrenar_motor(dp, plan, progreso)
+        if revisar_corte:
+            revisar_corte()
         err = A.guardar(almacen, clave, res)
         if err:
             raise RuntimeError(f"No se pudo guardar el modelo: {err}")
@@ -143,6 +145,10 @@ def entrenar_registro(reg, almacen, repo, almacen_vivo, descargar, progreso=None
     else:
         res, _ = A.cargar(almacen, clave)
         error_pct = res.metricas_entidad["wape"].mean() if res is not None else None
+    if revisar_corte:
+        revisar_corte()
+    if contenido is not None:      # los datos nuevos se guardan solo cuando ya existe su modelo
+        almacen.escribir(A.ruta_datos(Rp.id_usuario(reg["usuario"]), reg["id"]), contenido)
     repo.actualizar(reg["usuario"], reg["id"], dict(
         archivo_nombre=nombre, config=cfg, clave_modelo=clave, n_entidades=int(dp.df["entidad"].nunique()),
         error_pct=None if error_pct is None or pd.isna(error_pct) else float(error_pct)))

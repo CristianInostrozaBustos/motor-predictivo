@@ -1028,7 +1028,7 @@ def actualizacion_automatica():
         return      # ya se intentó con estos datos: no repetir
     if segundo_plano_disponible():
         if trabajo_activo() is None:
-            err = encolar(est["registro"], "pedido")
+            err = encolar(est["registro"], "auto")
             st.session_state["_auto_fallo" if err else "_auto_hecho"] = firma
             st.session_state["_auto_error"] = err
         return
@@ -1149,6 +1149,9 @@ def panel_trabajo():
                 abrir_pronostico(reg)
         st.session_state["_aviso_listo"] = True
         st.rerun(scope="app")
+    if t["estado"] == "cancelado":
+        st.session_state.pop("trabajo", None)
+        return
     if t["estado"] == "error":
         st.session_state.pop("trabajo", None)
         st.error(f"El entrenamiento en segundo plano falló: {t.get('mensaje') or 'sin detalle'}",
@@ -1167,6 +1170,18 @@ def panel_trabajo():
         accion = "Entrenando" if t.get("origen") == "nuevo" else "Actualizando"
         c1.markdown(f":material/cloud_sync: **{accion} tu pronóstico en segundo plano** · {reloj} · {resto}")
         c2.progress(min(0.97, max(float(t.get("progreso") or 0.0), lleva / total if total else 0.0)))
+
+
+def detener_automatico():
+    """Al apagar la actualización automática se detiene la que esté en curso (no las pedidas a mano)."""
+    from motor import trabajos as T
+    t = trabajo_activo()
+    if t and t.get("origen") == "auto" and t["estado"] in T.ACTIVOS:
+        try:
+            cola().actualizar(t["id"], estado="cancelado", terminado=T.ahora(), mensaje="Detenido por el usuario")
+        except Exception:  # noqa: BLE001
+            return
+        st.session_state.pop("trabajo", None)
 
 
 def aviso_listo():

@@ -87,6 +87,12 @@ with st.container(border=True):
                        "*Actualizando tu pronóstico*.")
     nuevo = {"modo": "auto" if auto else "manual", "cada": cada}
     if nuevo != {"modo": vivo["modo"], "cada": vivo.get("cada", "pedido")}:
+        if nuevo["modo"] != vivo["modo"]:
+            if auto:
+                st.session_state.pop("_auto_hecho", None)
+                st.session_state.pop("_auto_fallo", None)
+            else:
+                S.detener_automatico()
         S.guardar_config_vivo(nuevo)
         st.rerun()
 

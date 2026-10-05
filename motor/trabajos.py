@@ -2,7 +2,7 @@
 
 El sitio anota un trabajo (tabla `trabajos`) y avisa a GitHub Actions (workflow_dispatch). El entrenador
 (entrenador.py) lo toma, entrena y deja el estado en la tabla; el sitio lo consulta cada pocos segundos.
-Estados: pendiente → corriendo → listo / error.
+Estados: pendiente → corriendo → listo / error / cancelado.
 """
 
 from __future__ import annotations
@@ -15,6 +15,10 @@ from datetime import datetime, timezone
 import requests
 
 ACTIVOS = ("pendiente", "corriendo")
+
+
+class Cancelado(Exception):
+    """El usuario detuvo el trabajo (por ejemplo, apagó la actualización automática)."""
 CAMPOS = ("id", "usuario", "registro_id", "estado", "origen", "progreso", "mensaje", "creado", "iniciado", "terminado")
 
 SQL_SUPABASE = """
@@ -23,8 +27,8 @@ create table if not exists public.trabajos (
     id           uuid primary key default gen_random_uuid(),
     usuario      text not null,
     registro_id  uuid not null references public.pronosticos(id) on delete cascade,
-    estado       text not null default 'pendiente',   -- pendiente / corriendo / listo / error
-    origen       text not null default 'pedido',      -- pedido / nuevo / programado
+    estado       text not null default 'pendiente',   -- pendiente / corriendo / listo / error / cancelado
+    origen       text not null default 'pedido',      -- pedido / auto / nuevo / programado
     progreso     double precision not null default 0,
     mensaje      text,
     creado       timestamptz not null default now(),

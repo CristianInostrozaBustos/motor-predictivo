@@ -44,16 +44,26 @@ def correr_trabajo(trabajo, alm, repo, vivo, cola):
             ultimo[0] = time.time()
             log.info("%3.0f%% %s", 100 * frac, texto)
             try:
+                actual = cola.obtener(trabajo["id"])
                 cola.actualizar(trabajo["id"], progreso=float(min(frac, 0.99)), mensaje=str(texto)[:200])
             except Exception:  # noqa: BLE001
-                pass
+                return
+            if actual and actual["estado"] == "cancelado":
+                raise T.Cancelado()
 
     try:
+        def revisar_corte():
+            t = cola.obtener(trabajo["id"])
+            if t and t["estado"] == "cancelado":
+                raise T.Cancelado()
+
         clave, origen = Sv.entrenar_registro(reg, alm, repo, vivo, V.descargar_link, progreso,
-                                             incorporar=trabajo.get("origen") != "nuevo")
+                                             incorporar=trabajo.get("origen") != "nuevo", revisar_corte=revisar_corte)
         cola.actualizar(trabajo["id"], estado="listo", progreso=1.0, terminado=T.ahora(),
                         mensaje=f"Listo ({'modelo nuevo' if origen == 'nuevo' else 'modelo ya existía'})")
         log.info("trabajo %s listo: %s (%s)", trabajo["id"], clave, origen)
+    except T.Cancelado:
+        log.info("trabajo %s cancelado por el usuario", trabajo["id"])
     except Exception as e:  # noqa: BLE001
         log.error(traceback.format_exc())
         cola.actualizar(trabajo["id"], estado="error", terminado=T.ahora(),
@@ -95,7 +105,7 @@ def main():
     if t is None:
         log.error("no existe el trabajo %s", id_)
         sys.exit(1)
-    if t["estado"] in ("listo", "corriendo"):
+    if t["estado"] in ("listo", "corriendo", "cancelado"):
         log.info("el trabajo %s ya está %s", id_, t["estado"])
         return
     correr_trabajo(t, alm, repo, vivo, cola)
