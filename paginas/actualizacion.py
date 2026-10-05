@@ -8,7 +8,7 @@ import estilo as E
 import sesion as S
 
 S.panel_dataset()
-E.encabezado("Tus datos", "Actualización en tiempo real",
+E.encabezado("Datos", "Actualización en tiempo real",
              "Cuando llegan ventas o inventario nuevos, tu pronóstico se pone al día.")
 
 u = cuenta.usuario()
@@ -18,9 +18,9 @@ if not u:
     st.stop()
 r = S.registro_actual()
 if not r:
-    st.info("Primero genera un pronóstico en **Cargar datos**, o abre uno de tus análisis anteriores.",
+    st.info("Primero carga tus datos en **Inicio** y genera el pronóstico, o abre uno de tus análisis anteriores.",
             icon=":material/info:")
-    st.page_link("paginas/datos.py", label="Ir a Cargar datos", icon=":material/arrow_forward:")
+    st.page_link("paginas/inicio.py", label="Ir a Inicio", icon=":material/arrow_forward:")
     st.stop()
 
 dp = st.session_state["dp"]

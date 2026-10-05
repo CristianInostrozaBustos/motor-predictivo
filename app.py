@@ -8,7 +8,7 @@ st.set_page_config(page_title=E.NOMBRE_APP, page_icon="favicon.png", layout="wid
 E.aplicar_estilo()
 
 inicio = st.Page("paginas/inicio.py", title="Inicio", icon=":material/home:", default=True)
-p_datos = st.Page("paginas/datos.py", title="1. Tus datos")
+p_datos = st.Page("paginas/datos.py", title="1. Datos")
 p_act = st.Page("paginas/actualizacion.py", title="Actualización en tiempo real")
 p_an = st.Page("paginas/analisis.py", title="Análisis de tus datos")
 secciones = {

@@ -25,6 +25,12 @@ st.markdown(
 )
 
 st.write("")
+st.markdown("### Sube o carga tus datos")
+from carga import bloque_carga  # noqa: E402
+
+bloque_carga()
+
+st.write("")
 st.markdown("### Cómo funciona")
 pasos = [
     ("1", "Sube tus datos", "CSV o Excel con tu historial. El sistema reconoce las columnas y limpia huecos y duplicados."),
@@ -36,11 +42,3 @@ cols = st.columns(4)
 for col, (n, titulo, texto) in zip(cols, pasos):
     col.markdown(f'<div class="paso"><div class="n">{n}</div><h4>{titulo}</h4><p>{texto}</p></div>',
                  unsafe_allow_html=True)
-
-st.write("")
-with st.container(border=True):
-    c1, c2 = st.columns([3, 1], vertical_alignment="center")
-    c1.markdown("**Empieza por tus datos**")
-    c1.caption("Sube un CSV o Excel, o prueba con uno de los datasets de ejemplo.")
-    with c2:
-        st.page_link("paginas/datos.py", label="Ir a Datos", icon=":material/arrow_forward:")

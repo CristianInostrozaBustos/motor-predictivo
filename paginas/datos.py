@@ -7,91 +7,14 @@ import sesion as S
 from motor import datos as D
 from motor import reglas as R
 
-E.encabezado(
-    "Tus datos",
-    "Sube tu historial",
-    "Ventas o demanda en CSV, Excel o una planilla de Google. El sistema reconoce las columnas y deja todo listo "
-    "para pronosticar.",
-)
-
-# ---------------------------------------------------------------- análisis anteriores (con sesión iniciada)
-import cuenta  # noqa: E402
-
-_u = cuenta.usuario()
-if _u:
-    try:
-        _anteriores = S.repositorio().listar(_u["correo"])
-    except Exception:  # noqa: BLE001
-        _anteriores = []
-    if _anteriores:
-        with st.container(border=True):
-            c1, c2 = st.columns([4, 1], vertical_alignment="bottom")
-            _reg = c1.selectbox(
-                "Cargar un análisis anterior", _anteriores, index=None, placeholder="Elige uno de tus análisis",
-                format_func=lambda r: (f"{r['nombre']} · {r.get('n_entidades') or 0} "
-                                       f"{'serie' if (r.get('n_entidades') or 0) == 1 else 'series'} · "
-                                       f"{D.FRECUENCIAS.get(r.get('frecuencia') or 'D', D.FRECUENCIAS['D'])['nombre']} · "
-                                       f"{str(r.get('actualizado') or '')[:10]}"),
-                key="cargar_anterior", help="Recupera el archivo, la configuración y el modelo ya entrenado.")
-            if c2.button("Abrir", type="primary", width="stretch", disabled=_reg is None, key="abrir_anterior"):
-                barra = st.progress(0.0, text="Abriendo…")
-                try:
-                    S.abrir_pronostico(_reg, lambda f, t: barra.progress(min(f, 1.0), text=t))
-                    barra.empty()
-                    st.switch_page("paginas/pronostico.py")
-                except Exception as e:  # noqa: BLE001
-                    barra.empty()
-                    st.error(f"No se pudo abrir: {e}")
-elif cuenta.login_disponible():
-    st.caption(":material/history: Inicia sesión con Google (barra lateral) para volver a tus análisis anteriores "
-               "sin subir el archivo de nuevo.")
-
-# ---------------------------------------------------------------- origen
-with st.container(border=True):
-    origen = st.segmented_control("Origen", ["Subir archivo", "Pegar un link", "Usar un ejemplo"],
-                                  default="Subir archivo", label_visibility="collapsed", key="origen_datos")
-    if origen == "Pegar un link":
-        c1, c2 = st.columns([4, 1], vertical_alignment="bottom")
-        url = c1.text_input("Link de Google Sheets, o de un Excel o CSV público",
-                            placeholder="https://docs.google.com/spreadsheets/d/…", key="link_datos")
-        if c2.button("Leer", type="primary", width="stretch", disabled=not url.strip(), key="leer_link"):
-            try:
-                nombre_l, contenido_l = S.descargar_link(url.strip())
-                nombre_ds = S.nombre_desde_link(url.strip(), nombre_l)
-                st.session_state["df_raw"] = S.leer(nombre_l, contenido_l)
-                st.session_state["archivo_bytes"] = contenido_l
-                st.session_state["nombre_dataset"] = nombre_ds
-                st.session_state["link_origen"] = {"url": url.strip(), "hash": S.huella_bytes(contenido_l),
-                                                   "nombre": nombre_ds}
-            except Exception as e:  # noqa: BLE001
-                st.error(S._msg_error_link(e))
-        st.caption(":material/info: En Google Sheets: **Compartir → Cualquier persona con el enlace → Lector**. "
-                   + ("Como iniciaste sesión, tu análisis queda conectado a la planilla: cuando agregues filas, el "
-                      "pronóstico se pone al día." if cuenta.usuario() else
-                      "Inicia sesión para que el análisis quede conectado a la planilla y se actualice solo."))
-    elif origen == "Usar un ejemplo":
-        opciones = list(S.EJEMPLOS)
-        elegido = st.radio("Dataset de ejemplo", opciones, format_func=lambda a: S.EJEMPLOS[a][0],
-                           captions=[S.EJEMPLOS[a][1] for a in opciones], label_visibility="collapsed")
-        st.caption(":material/info: Datos de ejemplo generados para probar el sistema.")
-        if st.button("Cargar ejemplo", type="primary", icon=":material/download:"):
-            st.session_state["df_raw"] = S.cargar_ejemplo(elegido)
-            st.session_state["nombre_dataset"] = elegido
-            st.session_state.pop("link_origen", None)
-    else:
-        archivo = st.file_uploader("Archivo CSV o Excel", type=["csv", "xlsx", "xls"], label_visibility="collapsed")
-        if archivo is not None and archivo.name != st.session_state.get("nombre_dataset"):
-            try:
-                st.session_state["df_raw"] = S.leer(archivo.name, archivo.getvalue())
-                st.session_state["archivo_bytes"] = archivo.getvalue()
-                st.session_state["nombre_dataset"] = archivo.name
-                st.session_state.pop("link_origen", None)
-            except Exception as e:  # noqa: BLE001
-                st.error(f"No pudimos leer el archivo: {e}")
+E.encabezado("Datos", "Información del dataset",
+             "Cómo se leyeron tus datos, su resumen y cuánto quieres pronosticar.")
 
 df = st.session_state.get("df_raw")
 if df is None:
     S.panel_dataset()
+    st.info("Primero sube o carga tus datos en **Inicio**.", icon=":material/upload_file:")
+    st.page_link("paginas/inicio.py", label="Ir a Inicio", icon=":material/arrow_forward:")
     st.stop()
 
 nombre = st.session_state["nombre_dataset"]
@@ -179,6 +102,9 @@ if dp.df["objetivo"].notna().sum() == 0:
              "a pronosticar.")
     st.stop()
 st.session_state["dp"] = dp
+if st.session_state.get("_menu_dp") != S.clave_dataset(dp):     # el submenú lateral se arma antes que la página
+    st.session_state["_menu_dp"] = S.clave_dataset(dp)
+    st.rerun()
 st.session_state["config_actual"] = dict(roles=roles, exogenas=list(exogenas), frecuencia=frecuencia, relleno=relleno,
                                          negativos=bool(negativos), nombre_serie=nombre_serie.strip(),
                                          suavizar_picos=bool(suavizar), inflacion=S.config_inflacion())

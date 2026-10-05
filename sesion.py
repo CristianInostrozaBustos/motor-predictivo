@@ -256,11 +256,11 @@ def menu_vistas(pagina):
                  format_func=etiqueta_vista)
 
 
-MENU_CARGAR, MENU_ACTUALIZAR = "Cargar datos", "Actualización en tiempo real"
+MENU_CARGAR, MENU_ACTUALIZAR = "Información del dataset", "Actualización en tiempo real"
 
 
 def menu_tus_datos(actual, p_datos, p_act, p_an, alertas=0):
-    """Submenú de 1. Tus datos: cargar, actualización en tiempo real y los análisis del historial."""
+    """Submenú de 1. Datos: información del dataset, actualización en tiempo real y los análisis del historial."""
     import cuenta
     destino = {MENU_CARGAR: p_datos}
     if cuenta.login_disponible():
@@ -282,7 +282,7 @@ def menu_tus_datos(actual, p_datos, p_act, p_an, alertas=0):
         st.session_state["_ir_menu"] = v
 
     with st.container(key="vistas_datos" + ("_alerta" if alertas and MENU_ACTUALIZAR in destino else "")):
-        st.radio("Tus datos", opciones, key=kw, on_change=_ir, label_visibility="collapsed")
+        st.radio("Datos", opciones, key=kw, on_change=_ir, label_visibility="collapsed")
     ir = st.session_state.pop("_ir_menu", None)
     if ir:
         p = destino.get(ir, p_an)
@@ -699,8 +699,12 @@ def requiere_pronostico():
     dp, res = resultado()
     if dp is None or res is None:
         panel_dataset()
-        st.info("Primero carga tus datos y genera el pronóstico.", icon=":material/info:")
-        st.page_link("paginas/datos.py", label="Ir a Datos", icon=":material/arrow_forward:")
+        if dp is None:
+            st.info("Primero carga tus datos en **Inicio** y genera el pronóstico.", icon=":material/info:")
+            st.page_link("paginas/inicio.py", label="Ir a Inicio", icon=":material/arrow_forward:")
+        else:
+            st.info("Genera el pronóstico en **1. Datos**.", icon=":material/info:")
+            st.page_link("paginas/datos.py", label="Ir a 1. Datos", icon=":material/arrow_forward:")
         st.stop()
     return dp, res
 

@@ -48,9 +48,9 @@ if res_act is not None and not S.registro_actual():
                 st.rerun()
 
 if not lista:
-    st.info("Todavía no tienes pronósticos guardados. Genera uno en **1. Tus datos** y quedará aquí automáticamente.",
+    st.info("Todavía no tienes pronósticos guardados. Carga tus datos en **Inicio**, genera el pronóstico y quedará aquí automáticamente.",
             icon=":material/inbox:")
-    st.page_link("paginas/datos.py", label="Ir a Tus datos", icon=":material/arrow_forward:")
+    st.page_link("paginas/inicio.py", label="Ir a Inicio", icon=":material/arrow_forward:")
     st.stop()
 
 

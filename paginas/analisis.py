@@ -10,7 +10,7 @@ dp = st.session_state.get("dp")
 S.panel_dataset()
 if dp is None:
     st.info("Primero carga tus datos.", icon=":material/info:")
-    st.page_link("paginas/datos.py", label="Ir a Datos", icon=":material/arrow_forward:")
+    st.page_link("paginas/inicio.py", label="Ir a Inicio", icon=":material/arrow_forward:")
     st.stop()
 
 fi = dp.freq_info
@@ -20,7 +20,7 @@ n_ent = dp.df["entidad"].nunique()
 df = dp.df
 
 vista = S.vista("analisis")
-E.titulo_compacto("Tus datos · Análisis", S.etiqueta_vista(vista))
+E.titulo_compacto("Datos · Análisis", S.etiqueta_vista(vista))
 elegidas = [vista]
 no_disp = []
 if not dp.tiene("promocion"):
