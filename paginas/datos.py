@@ -166,68 +166,11 @@ if plan.entidades_excluidas:
                f"pronosticarán: {', '.join(map(str, plan.entidades_excluidas[:8]))}"
                f"{'…' if len(plan.entidades_excluidas) > 8 else ''}.", icon=":material/warning:")
 
-# ---------------------------------------------------------------- horizonte y botón
-st.markdown("## ¿Cuánto quieres pronosticar?")
-clave = S.clave_dataset(dp)
+# ---------------------------------------------------------------- siguiente paso
 _, res = S.resultado()
-with st.container(border=True):
-    h_prev = st.session_state.get("horizonte") or plan.horizonte_defecto
-    h = st.slider(f"{fi['unidad_pl'].capitalize()} hacia adelante", 1, plan.horizonte_max,
-                  min(h_prev, plan.horizonte_max), key=f"h_{clave}")
-    st.caption(f"Hasta {plan.horizonte_max} {fi['unidad_pl']} según el historial disponible. "
-               f"El pronóstico empieza el {(f1 + pd.tseries.frequencies.to_offset(D.FRECUENCIAS[dp.config.frecuencia]['pandas'])):%d/%m/%Y}.")
-    en_cola = S.trabajo_activo() if res is None else None
-    if res is None and en_cola is not None:
-        st.caption(":material/cloud_sync: Generando en segundo plano")
-    elif res is None:
-        fondo = S.segundo_plano_disponible() and not S.modelo_guardado(clave)
-        generar = st.button("Generar pronóstico", type="primary", icon=":material/auto_graph:")
-        if generar and fondo:
-            st.session_state["horizonte"] = h
-            err = S.guardar_pronostico_actual(sin_modelo=True)
-            r_nuevo = S.registro_actual()
-            err = err or (S.encolar(r_nuevo["id"], "nuevo") if r_nuevo else "No se pudo guardar el análisis.")
-            if err:
-                st.error(err)
-            else:
-                st.rerun()
-        elif generar:
-            barra = st.progress(0.0, text="Preparando…")
-            res_nuevo, origen = S.entrenar(clave, dp, plan, lambda frac, txt: barra.progress(min(frac, 1.0), text=txt))
-            barra.empty()
-            st.session_state["resultado"] = {"clave": clave, "res": res_nuevo, "origen": origen}
-            st.session_state["horizonte"] = h
-            st.rerun()
-        if S.modelo_guardado(clave):
-            st.caption(":material/bolt: Estos datos ya se analizaron antes: el pronóstico sale al instante.")
-        elif fondo:
-            st.caption(":material/cloud_sync: Se entrena en segundo plano (entre 3 y 8 minutos)")
-        else:
-            st.caption(":material/schedule: Toma entre 1 y 4 minutos según el tamaño de tus datos. El sistema elige solo "
-                       "la mejor forma de entrenar para tu dataset, y la guarda para la próxima vez.")
-    else:
-        st.session_state["horizonte"] = h
-        S.actualizar_registro(horizonte=int(h))
-        S.actualizar_registro(config=st.session_state["config_actual"])
-        origen = st.session_state["resultado"].get("origen")
-        import cuenta
-        error_guardado = S.guardar_pronostico_actual()
-        if error_guardado:
-            st.session_state.setdefault("avisos_almacen", []).append(error_guardado)
-        st.success("Pronóstico listo." + (" Recuperado de un análisis anterior de estos mismos datos." if origen == "guardado" else ""),
-                   icon=":material/check_circle:")
-        reg = S.registro_actual()
-        if reg:
-            st.caption(f":material/cloud_done: Guardado en **Mis pronósticos** como “{reg['nombre']}”.")
-        elif cuenta.login_disponible() and not cuenta.usuario():
-            st.caption(":material/lock_open: Estás usando el modo abierto: el pronóstico no se guarda a tu nombre. "
-                       "Inicia sesión (barra lateral) para guardarlo y volver a él cuando quieras.")
-        for aviso in st.session_state.pop("avisos_almacen", []):
-            if S.modo_dev():
-                st.warning(aviso, icon=":material/cloud_off:")
-        b1, b2, b3 = st.columns(3)
-        b1.page_link("paginas/pronostico.py", label="Ver pronóstico", icon=":material/show_chart:")
-        b2.page_link("paginas/decisiones.py", label="Ver decisiones de abastecimiento", icon=":material/inventory_2:")
-        b3.page_link("paginas/analisis.py", label="Explorar mis datos", icon=":material/insights:")
+if res is not None:
+    S.actualizar_registro(config=st.session_state["config_actual"])
+st.page_link("paginas/pronostico.py", label="Ver pronóstico" if res is not None else "Siguiente: generar el pronóstico",
+             icon=":material/arrow_forward:")
 
 S.panel_dataset()

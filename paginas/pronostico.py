@@ -6,17 +6,31 @@ import streamlit as st
 import estilo as E
 import sesion as S
 
-dp, res = S.requiere_pronostico()
+from generar import bloque_horizonte
+from motor import reglas as R
+
+dp = st.session_state.get("dp")
+if dp is None:
+    S.requiere_pronostico()
+vista = S.vista("pronostico")
+E.titulo_compacto("Pronóstico", S.etiqueta_vista(vista) if vista else "¿Cuánto quieres pronosticar?")
+S.aviso_datos_nuevos()
+plan = R.planificar(dp)
+if not plan.viable:
+    S.panel_dataset()
+    st.error(f"El historial es demasiado corto para pronosticar: se necesitan al menos "
+             f"{R.minimo_registros(dp.config.frecuencia)} {dp.freq_info['unidad_pl']} por {S.nombre_entidad(dp)}.")
+    st.stop()
+bloque_horizonte(dp, plan)
+dp, res = S.resultado()
 S.panel_dataset()
+if res is None:
+    st.stop()
 fut = S.pronostico()
 entidades = list(fut)
 fi = dp.freq_info
 H = S.horizonte()
 obj = dp.etiquetas["objetivo"]
-
-vista = S.vista("pronostico")
-E.titulo_compacto("Pronóstico", S.etiqueta_vista(vista))
-S.aviso_datos_nuevos()
 nom_col = S.mayus(S.nombre_entidad(dp))
 met = res.metricas_entidad.set_index("entidad")
 
