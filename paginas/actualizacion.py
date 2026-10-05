@@ -41,24 +41,33 @@ def fecha_corta(valor):
 
 # ---------------------------------------------------------------- estado
 est = S.estado_vivo()
+en_curso = S.trabajo_activo() is not None
 with st.container(border=True):
     c1, c2 = st.columns([3, 1.2], vertical_alignment="center")
     if est["error_link"]:
         c1.markdown(f":material/link_off: **No pudimos leer la planilla conectada.** {est['error_link']}")
     elif est["error"]:
         c1.markdown(f":material/error: {est['error']}")
+    elif en_curso:
+        c1.markdown(":material/cloud_sync: Incorporando los datos nuevos a tu pronóstico.")
     elif S.hay_pendientes(est):
         c1.markdown(f'<span class="globo-rojo">1</span> **Hay datos nuevos**: {S.texto_pendientes(est, dp)}',
                     unsafe_allow_html=True)
         if c2.button("Actualizar ahora", type="primary", icon=":material/refresh:", width="stretch"):
             err = S.actualizar_ahora()
-            st.error(err) if err else st.rerun()
+            if err:
+                st.error(err)
+            else:
+                st.rerun()
     else:
         ultima = f" Última actualización: {fecha_corta(vivo['ultima'])}." if vivo.get("ultima") else ""
         c1.markdown(f":material/check_circle: **Todo al día.** Tu pronóstico ya usa los últimos datos.{ultima}")
-    if not S.hay_pendientes(est) and c2.button("Revisar ahora", icon=":material/sync:", width="stretch"):
+    if not S.hay_pendientes(est) and not en_curso and c2.button("Revisar ahora", icon=":material/sync:", width="stretch"):
         S.estado_vivo(refrescar=True)
         st.rerun()
+
+if st.session_state.get("_auto_error"):
+    st.error(f"La actualización automática no pudo partir. {st.session_state['_auto_error']}", icon=":material/error:")
 
 # ---------------------------------------------------------------- cuándo actualizar
 with st.container(border=True):
@@ -71,8 +80,11 @@ with st.container(border=True):
                         if cada in S.CADA else 0, format_func=S.CADA.get, horizontal=True)
         st.caption("Mientras tanto, cuando haya datos nuevos verás el aviso rojo en **1. Tus datos**.")
     else:
-        st.caption("El reentrenamiento toma entre 1 y 4 minutos: no cierres la pestaña mientras dice "
-                   "*Actualizando tu pronóstico*.")
+        if S.segundo_plano_disponible():
+            st.caption("El reentrenamiento corre en segundo plano: puedes seguir usando el sitio o cerrarlo.")
+        else:
+            st.caption("El reentrenamiento toma entre 1 y 4 minutos: no cierres la pestaña mientras dice "
+                       "*Actualizando tu pronóstico*.")
     nuevo = {"modo": "auto" if auto else "manual", "cada": cada}
     if nuevo != {"modo": vivo["modo"], "cada": vivo.get("cada", "pedido")}:
         S.guardar_config_vivo(nuevo)

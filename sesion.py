@@ -980,7 +980,7 @@ def alertas_datos() -> int:
         est = estado_vivo()
     except Exception:  # noqa: BLE001
         return 0
-    if not est:
+    if not est or trabajo_activo() is not None:
         return 0
     return int(hay_pendientes(est) or bool(est["error_link"]))
 
@@ -1030,15 +1030,14 @@ def actualizacion_automatica():
         if trabajo_activo() is None:
             err = encolar(est["registro"], "pedido")
             st.session_state["_auto_fallo" if err else "_auto_hecho"] = firma
-            if err:
-                st.session_state.setdefault("avisos_almacen", []).append(err)
+            st.session_state["_auto_error"] = err
         return
     with st.container(border=True):
         st.markdown(":material/sync: **Llegaron datos nuevos.** Actualizando tu pronóstico; no cierres esta pestaña.")
         err = actualizar_ahora()
+    st.session_state["_auto_error"] = err
     if err:
         st.session_state["_auto_fallo"] = firma
-        st.session_state.setdefault("avisos_almacen", []).append(err)
     else:
         r = registro_actual()
         st.session_state["_auto_hecho"] = (r["id"], r["clave"]) if r else None
@@ -1059,7 +1058,7 @@ def texto_pendientes(est, dp) -> str:
 def aviso_datos_nuevos(clave_boton="vivo_actualizar"):
     """Aviso con botón cuando llegaron ventas nuevas y la actualización es a pedido."""
     est = estado_vivo()
-    if not hay_pendientes(est) or toca_actualizar_solo(config_vivo()):
+    if not hay_pendientes(est) or toca_actualizar_solo(config_vivo()) or trabajo_activo() is not None:
         return
     dp = st.session_state["dp"]
     with st.container(border=True):
@@ -1069,7 +1068,10 @@ def aviso_datos_nuevos(clave_boton="vivo_actualizar"):
         if c2.button("Actualizar pronóstico", key=clave_boton, type="primary", icon=":material/refresh:",
                      width="stretch"):
             err = actualizar_ahora()
-            st.error(err) if err else st.rerun()
+            if err:
+                st.error(err)
+            else:
+                st.rerun()
 
 
 # ---------------------------------------------------------------- entrenamiento en segundo plano (GitHub Actions)
@@ -1111,6 +1113,7 @@ def encolar(registro_id, origen="pedido"):
         cola().actualizar(t["id"], estado="error", mensaje=str(e)[:300], terminado=T.ahora())
         return f"No se pudo iniciar el entrenamiento en segundo plano: {e}"
     st.session_state["trabajo"] = {"id": t["id"], "registro": registro_id}
+    st.session_state.pop("_auto_error", None)
     return None
 
 
@@ -1132,15 +1135,7 @@ def trabajo_activo():
     return None
 
 
-def _hace(valor):
-    try:
-        seg = (pd.Timestamp.now(tz="UTC") - pd.Timestamp(valor)).total_seconds()
-    except Exception:  # noqa: BLE001
-        return ""
-    return "recién" if seg < 60 else f"hace {int(seg // 60)} min"
-
-
-@st.fragment(run_every=10)
+@st.fragment(run_every=5)
 def panel_trabajo():
     """Estado del entrenamiento en segundo plano; al terminar, carga el modelo nuevo."""
     t = trabajo_activo()
@@ -1159,14 +1154,18 @@ def panel_trabajo():
         st.error(f"El entrenamiento en segundo plano falló: {t.get('mensaje') or 'sin detalle'}",
                  icon=":material/error:")
         return
+    from motor import trabajos as T
+    if "_estimado" not in st.session_state or st.session_state["_estimado"][0] != t["id"]:
+        st.session_state["_estimado"] = (t["id"], T.duracion_estimada(cola(), t["registro_id"]))
+    total = st.session_state["_estimado"][1]
+    lleva = max(0.0, (pd.Timestamp.now(tz="UTC") - pd.Timestamp(t["creado"])).total_seconds())
+    falta = total - lleva
+    reloj = f"{int(lleva // 60)}:{int(lleva % 60):02d}"
+    resto = (f"faltan unos {max(1, round(falta / 60))} min" if falta > 45 else "casi listo")
     with st.container(border=True):
-        c1, c2 = st.columns([3, 1.2], vertical_alignment="center")
-        texto = "en cola, esperando un computador libre" if t["estado"] == "pendiente" else (t.get("mensaje") or "")
-        c1.markdown(f":material/cloud_sync: **Actualizando tu pronóstico en segundo plano** · {texto}  \n"
-                    f"<span style='color:#6b6a66;font-size:.85rem'>Empezó {_hace(t['creado'])}. Puedes seguir usando "
-                    f"el sitio o cerrarlo: cuando termine, el pronóstico se carga solo.</span>",
-                    unsafe_allow_html=True)
-        c2.progress(float(t.get("progreso") or 0.0))
+        c1, c2 = st.columns([2, 1.5], vertical_alignment="center")
+        c1.markdown(f":material/cloud_sync: **Actualizando tu pronóstico en segundo plano** · {reloj} · {resto}")
+        c2.progress(min(0.97, max(float(t.get("progreso") or 0.0), lleva / total if total else 0.0)))
 
 
 def aviso_listo():

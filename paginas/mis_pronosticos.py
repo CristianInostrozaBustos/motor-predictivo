@@ -42,7 +42,10 @@ if res_act is not None and not S.registro_actual():
         c1.markdown(f"**Tienes un pronóstico abierto sin guardar** · {st.session_state.get('nombre_dataset', '')}")
         if c2.button("Guardarlo", icon=":material/save:", width="stretch"):
             err = S.guardar_pronostico_actual()
-            st.error(err) if err else st.rerun()
+            if err:
+                st.error(err)
+            else:
+                st.rerun()
 
 if not lista:
     st.info("Todavía no tienes pronósticos guardados. Genera uno en **1. Tus datos** y quedará aquí automáticamente.",

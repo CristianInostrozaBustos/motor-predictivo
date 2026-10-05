@@ -77,6 +77,10 @@ class TrabajosLocal:
     def pendientes(self):
         return self._filas("where estado='pendiente' order by creado")
 
+    def terminados(self, registro_id, n=3):
+        return self._filas("where registro_id=? and estado='listo' and terminado is not null order by creado desc "
+                           "limit ?", (registro_id, n))
+
     def actualizar(self, id_, **cambios):
         sets = ", ".join(f"{k}=?" for k in cambios)
         with self._con() as c:
@@ -112,6 +116,10 @@ class TrabajosSupabase:
     def pendientes(self):
         return self._get({"estado": "eq.pendiente", "order": "creado"})
 
+    def terminados(self, registro_id, n=3):
+        return self._get({"registro_id": f"eq.{registro_id}", "estado": "eq.listo", "terminado": "not.is.null",
+                          "order": "creado.desc", "limit": n})
+
     def actualizar(self, id_, **cambios):
         r = requests.patch(self.base, headers=self.h, params={"id": f"eq.{id_}"}, json=cambios, timeout=self.timeout)
         r.raise_for_status()
@@ -122,6 +130,19 @@ def crear(config: dict | None):
     if config.get("tipo") == "supabase":
         return TrabajosSupabase(config["url"], config["key"])
     return TrabajosLocal(os.path.join(config.get("ruta", "almacen_local"), "pronosticos.db"))
+
+
+def duracion_estimada(cola, registro_id, defecto_seg=420.0) -> float:
+    """Segundos que tomaron las últimas actualizaciones de este análisis (mediana), o un valor típico."""
+    import statistics
+    try:
+        durs = [(datetime.fromisoformat(str(t["terminado"]).replace("Z", "+00:00"))
+                 - datetime.fromisoformat(str(t["creado"]).replace("Z", "+00:00"))).total_seconds()
+                for t in cola.terminados(registro_id)]
+    except Exception:  # noqa: BLE001
+        durs = []
+    durs = [d for d in durs if d > 0]
+    return statistics.median(durs) if durs else defecto_seg
 
 
 def disparar_github(token: str, repo: str, trabajo_id: str, workflow="entrenar.yml", rama="main"):

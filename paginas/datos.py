@@ -262,7 +262,10 @@ with st.container(border=True):
             err = S.guardar_pronostico_actual(sin_modelo=True)
             r_nuevo = S.registro_actual()
             err = err or (S.encolar(r_nuevo["id"], "nuevo") if r_nuevo else "No se pudo guardar el análisis.")
-            st.error(err) if err else st.rerun()
+            if err:
+                st.error(err)
+            else:
+                st.rerun()
         elif generar:
             barra = st.progress(0.0, text="Preparando…")
             res_nuevo, origen = S.entrenar(clave, dp, plan, lambda frac, txt: barra.progress(min(frac, 1.0), text=txt))
