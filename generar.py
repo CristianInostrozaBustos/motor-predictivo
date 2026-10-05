@@ -17,10 +17,11 @@ def bloque_horizonte(dp, plan):
     h_prev = min(st.session_state.get("horizonte") or plan.horizonte_defecto, plan.horizonte_max)
     if res is not None:
         # ya pronosticado: fila compacta de etiquetas; el horizonte se ajusta en un desplegable
-        c1, c2 = st.columns([1, 3.2], vertical_alignment="center")
         h_txt = int(st.session_state.get(f"h_{clave}", h_prev))
-        with c1.container(key="horizonte_chip"), st.popover(f"{h_txt} {fi['unidad_pl'] if h_txt != 1 else fi['unidad']} hacia adelante",
-                        icon=":material/date_range:", width="stretch"):
+        fila = st.container(horizontal=True, vertical_alignment="center", gap="small", key="horizonte_fila")
+        with fila.container(key="horizonte_chip", width="content"), st.popover(
+                f"{h_txt} {fi['unidad_pl'] if h_txt != 1 else fi['unidad']} hacia adelante",
+                icon=":material/date_range:", width="content"):
             h = st.slider(f"{fi['unidad_pl'].capitalize()} hacia adelante", 1, plan.horizonte_max, h_prev,
                           key=f"h_{clave}")
             st.caption(f"Hasta {plan.horizonte_max} {fi['unidad_pl']} según el historial disponible.")
@@ -29,14 +30,11 @@ def bloque_horizonte(dp, plan):
         err = S.guardar_pronostico_actual()
         if err:
             st.session_state.setdefault("avisos_almacen", []).append(err)
-        reg = S.registro_actual()
         chips = [f"Desde <b>{inicio:%d/%m/%Y}</b>"]
-        if reg:
-            chips.append(f"Guardado como <b>{reg['nombre']}</b>")
-        elif cuenta.login_disponible() and not cuenta.usuario():
+        if not S.registro_actual() and cuenta.login_disponible() and not cuenta.usuario():
             chips.append("Modo abierto: inicia sesión para guardarlo")
-        c2.markdown('<div class="resumen-chips" style="margin:0">' + "".join(f"<span>{c}</span>" for c in chips)
-                    + "</div>", unsafe_allow_html=True)
+        fila.markdown('<div class="resumen-chips" style="margin:0">' + "".join(f"<span>{c}</span>" for c in chips)
+                      + "</div>", unsafe_allow_html=True, width="content")
         for aviso in st.session_state.pop("avisos_almacen", []):
             if S.modo_dev():
                 st.warning(aviso, icon=":material/cloud_off:")

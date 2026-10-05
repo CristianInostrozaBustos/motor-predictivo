@@ -273,8 +273,10 @@ section[data-testid="stSidebar"] [data-testid="stVerticalBlock"] { gap: 0.35rem;
     padding: 6px 14px; font-size: .9rem; color: #52514e; }
 .resumen-chips b { color: #0b0b0b; font-weight: 650; }
 [class*="st-key-horizonte_chip"] button { background: #ffffff; border: 1px solid rgba(11,11,11,0.08); border-radius: 999px;
-    padding: 3px 14px; min-height: 0; font-weight: 600; color: #1c5cab; }
-[class*="st-key-horizonte_chip"] button p { color: #1c5cab; }
+    padding: 6px 14px !important; min-height: 0 !important; height: auto; line-height: 1.5; font-weight: 400; }
+[class*="st-key-horizonte_chip"] button p { color: #1c5cab; font-size: .9rem; font-weight: 600; line-height: 1.5; }
+[class*="st-key-horizonte_chip"] button [data-testid="stIconMaterial"] { font-size: 1rem; color: #1c5cab; }
+[class*="st-key-horizonte_fila"] [data-testid="stMarkdownContainer"] { margin: 0; }
 
 .encabezado { margin: 4px 0 18px 0; }
 .encabezado .eyebrow { font-size: 0.76rem; letter-spacing: 0.1em; text-transform: uppercase; color: #1c5cab; font-weight: 700; }
