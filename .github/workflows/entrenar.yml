@@ -1,4 +1,4 @@
-# Entrenamiento en segundo plano: a pedido del sitio (workflow_dispatch) y una vez al día (schedule).
+# Entrenamiento en segundo plano
 name: Entrenar
 
 on:
@@ -9,8 +9,8 @@ on:
         required: false
         default: ""
   schedule:
-    - cron: "17 10 * * *"     # todos los días 10:17 UTC (madrugada en Chile)
-
+    - cron: "17 10 * * *" 
+    
 concurrency:
   group: entrenar-${{ github.event.inputs.trabajo || 'programado' }}
   cancel-in-progress: false
