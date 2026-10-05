@@ -250,9 +250,20 @@ with st.container(border=True):
                   min(h_prev, plan.horizonte_max), key=f"h_{clave}")
     st.caption(f"Hasta {plan.horizonte_max} {fi['unidad_pl']} según el historial disponible. "
                f"El pronóstico empieza el {(f1 + pd.tseries.frequencies.to_offset(D.FRECUENCIAS[dp.config.frecuencia]['pandas'])):%d/%m/%Y}.")
-    if res is None:
+    en_cola = S.trabajo_activo() if res is None else None
+    if res is None and en_cola is not None:
+        st.caption(":material/cloud_sync: Generando en segundo plano. Puedes seguir explorando tus datos o cerrar el "
+                   "sitio: el pronóstico queda en **Mis pronósticos**.")
+    elif res is None:
+        fondo = S.segundo_plano_disponible() and not S.modelo_guardado(clave)
         generar = st.button("Generar pronóstico", type="primary", icon=":material/auto_graph:")
-        if generar:
+        if generar and fondo:
+            st.session_state["horizonte"] = h
+            err = S.guardar_pronostico_actual(sin_modelo=True)
+            r_nuevo = S.registro_actual()
+            err = err or (S.encolar(r_nuevo["id"], "nuevo") if r_nuevo else "No se pudo guardar el análisis.")
+            st.error(err) if err else st.rerun()
+        elif generar:
             barra = st.progress(0.0, text="Preparando…")
             res_nuevo, origen = S.entrenar(clave, dp, plan, lambda frac, txt: barra.progress(min(frac, 1.0), text=txt))
             barra.empty()
@@ -261,6 +272,9 @@ with st.container(border=True):
             st.rerun()
         if S.modelo_guardado(clave):
             st.caption(":material/bolt: Estos datos ya se analizaron antes: el pronóstico sale al instante.")
+        elif fondo:
+            st.caption(":material/cloud_sync: Se entrena en segundo plano (entre 3 y 8 minutos): puedes seguir usando el "
+                       "sitio o cerrarlo, y el pronóstico queda guardado en **Mis pronósticos**.")
         else:
             st.caption(":material/schedule: Toma entre 1 y 4 minutos según el tamaño de tus datos. El sistema elige solo "
                        "la mejor forma de entrenar para tu dataset, y la guarda para la próxima vez.")

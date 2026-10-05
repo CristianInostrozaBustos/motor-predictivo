@@ -113,6 +113,12 @@ class RepositorioLocal:
         with self._con() as c:
             c.execute("delete from pronosticos where usuario=? and id=?", (usuario, id_))
 
+    def listar_todos(self):
+        """Todos los análisis de todos los usuarios (solo para el entrenador programado)."""
+        with self._con() as c:
+            filas = c.execute(f"select {','.join(CAMPOS)} from pronosticos").fetchall()
+        return [self._fila(r) for r in filas]
+
 
 # ---------------------------------------------------------------- Supabase (PostgREST)
 
@@ -158,6 +164,18 @@ class SupabaseRepositorio:
     def borrar(self, usuario, id_):
         r = requests.delete(self.base, headers=self.h, params=self._q(usuario, id_), timeout=self.timeout)
         r.raise_for_status()
+
+    def listar_todos(self):
+        """Todos los análisis de todos los usuarios (solo para el entrenador programado)."""
+        out, desde = [], 0
+        while True:
+            r = requests.get(self.base, headers=self.h, params={"select": "*", "order": "creado", "limit": 1000,
+                                                                "offset": desde}, timeout=self.timeout)
+            r.raise_for_status()
+            out += r.json()
+            if len(r.json()) < 1000:
+                return out
+            desde += 1000
 
 
 def crear(config: dict | None):

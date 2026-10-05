@@ -60,3 +60,22 @@ grant select, insert, update, delete on table public.datos_vivo to service_role;
 grant usage, select on all sequences in schema public to service_role;
 revoke all on table public.integraciones from anon, authenticated;
 revoke all on table public.datos_vivo from anon, authenticated;
+
+
+-- Entrenamientos en segundo plano (GitHub Actions)
+create table if not exists public.trabajos (
+    id           uuid primary key default gen_random_uuid(),
+    usuario      text not null,
+    registro_id  uuid not null references public.pronosticos(id) on delete cascade,
+    estado       text not null default 'pendiente',   -- pendiente / corriendo / listo / error
+    origen       text not null default 'pedido',      -- pedido / nuevo / programado
+    progreso     double precision not null default 0,
+    mensaje      text,
+    creado       timestamptz not null default now(),
+    iniciado     timestamptz,
+    terminado    timestamptz
+);
+create index if not exists trabajos_registro_idx on public.trabajos (registro_id, creado desc);
+alter table public.trabajos enable row level security;
+grant select, insert, update, delete on table public.trabajos to service_role;
+revoke all on table public.trabajos from anon, authenticated;

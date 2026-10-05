@@ -50,5 +50,7 @@ with st.sidebar:
     st.divider()
 if pg.url_path != p_datos.url_path:
     S.actualizacion_automatica()
+S.panel_trabajo()
+S.aviso_listo()
 pg.run()
 E.pie_pagina()

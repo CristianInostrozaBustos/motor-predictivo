@@ -59,12 +59,8 @@ def preparar_cacheado(df, roles_items, exogenas, frecuencia, relleno, negativos,
 
 
 def clave_dataset(dp) -> str:
-    h = hashlib.sha256(pd.util.hash_pandas_object(dp.df, index=False).values.tobytes())
-    h.update(str(dp.variables_modelo).encode())
-    h.update(dp.config.frecuencia.encode())
-    if dp.config.suavizar_picos and len(dp.picos):     # solo cambia el modelo si hay picos que suavizar
-        h.update(b"picos")
-    return h.hexdigest()[:16]
+    from motor import servicio as Sv
+    return Sv.clave_dataset(dp)
 
 
 # ---------------------------------------------------------------- entrenamiento y pronóstico
@@ -725,11 +721,12 @@ def registro_actual():
     return r
 
 
-def guardar_pronostico_actual():
-    """Crea el registro en Mis pronósticos al generar un pronóstico con sesión iniciada. Devuelve el error o None."""
+def guardar_pronostico_actual(sin_modelo=False):
+    """Crea el registro en Mis pronósticos al generar un pronóstico con sesión iniciada. Devuelve el error o None.
+    sin_modelo=True: lo crea antes de entrenar (el entrenamiento corre en segundo plano)."""
     u = _usuario()
     dp, res = resultado()
-    if not u or res is None or registro_actual():
+    if not u or (res is None and not sin_modelo) or registro_actual():
         return None
     from motor import almacen as A
     from motor import repositorio as Rp
@@ -739,7 +736,8 @@ def guardar_pronostico_actual():
             nombre=os.path.splitext(nombre)[0].replace("_", " ").capitalize(),
             archivo_nombre=nombre, clave_modelo=clave_dataset(dp), frecuencia=dp.config.frecuencia,
             n_entidades=int(dp.df["entidad"].nunique()), horizonte=int(horizonte() or 0),
-            error_pct=(lambda v: None if pd.isna(v) else float(v))(res.metricas_entidad["wape"].mean()),
+            error_pct=None if res is None else (lambda v: None if pd.isna(v) else float(v))(
+                res.metricas_entidad["wape"].mean()),
             config=st.session_state.get("config_actual", {}), escenarios=[],
         ))
         contenido = st.session_state.get("archivo_bytes")
@@ -991,40 +989,23 @@ def actualizar_con_datos_vivos(reg, progreso=None):
     """Junta el archivo (o la planilla conectada) con los datos en vivo, lo guarda como nueva versión y reentrena."""
     from motor import almacen as A
     from motor import repositorio as Rp
-    from motor import vivo as V
+    from motor import servicio as Sv
     u = _usuario()
-    ruta = A.ruta_datos(Rp.id_usuario(u["correo"]), reg["id"])
-    cfg = dict(reg.get("config") or {})
-    vivo = config_vivo(cfg)
-    roles = cfg.get("roles") or {}
-    filas = []
-    if vivo.get("link") and vivo.get("link_base"):       # la planilla es el historial completo
-        nombre_l, contenido_l = descargar_link(vivo["link"])
-        base = leer(nombre_l, contenido_l)
-        vivo["hash"] = huella_bytes(contenido_l)
-    else:
-        contenido = almacen_persistente().leer(ruta)
-        if contenido is None:
-            raise FileNotFoundError("No se encontró el archivo de datos de este pronóstico.")
-        base = leer(reg["archivo_nombre"], contenido)
-        if vivo.get("link"):
-            filas += filas_del_link(vivo["link"], roles)
-    filas += almacen_vivo().leer_filas(u["correo"], reg["id"])
-    nuevo = V.combinar(base, roles, filas, cfg.get("frecuencia", "D"))
-    nombre = os.path.splitext(reg["archivo_nombre"])[0] + ".csv"
-    almacen_persistente().escribir(ruta, nuevo.to_csv(index=False).encode("utf-8"))
-    vivo["ultima"] = pd.Timestamp.now(tz="UTC").isoformat()
-    cfg["vivo"] = vivo
-    cfg.pop("vivo_link", None)
+    _, cfg, nombre, contenido = Sv.datos_actualizados(dict(reg, usuario=u["correo"]), almacen_persistente(),
+                                                      almacen_vivo(), descargar_link)
+    if contenido is not None:
+        almacen_persistente().escribir(A.ruta_datos(Rp.id_usuario(u["correo"]), reg["id"]), contenido)
     repositorio().actualizar(u["correo"], reg["id"], {"archivo_nombre": nombre, "config": cfg})
     return abrir_pronostico(dict(reg, archivo_nombre=nombre, config=cfg), progreso)
 
 
 def actualizar_ahora(contenedor=None):
-    """Actualiza el análisis abierto con barra de progreso. Devuelve el error o None."""
+    """Actualiza el análisis abierto (en segundo plano si GitHub está configurado). Devuelve el error o None."""
     r = registro_actual()
     if not r:
         return "No hay un análisis guardado abierto."
+    if segundo_plano_disponible():
+        return encolar(r["id"], "pedido")
     reg = repositorio().obtener(_usuario()["correo"], r["id"])
     caja = contenedor or st
     barra = caja.progress(0.0, text="Juntando los datos nuevos…")
@@ -1045,6 +1026,13 @@ def actualizacion_automatica():
     firma = (est["registro"], est["clave"])
     if firma in (st.session_state.get("_auto_fallo"), st.session_state.get("_auto_hecho")):
         return      # ya se intentó con estos datos: no repetir
+    if segundo_plano_disponible():
+        if trabajo_activo() is None:
+            err = encolar(est["registro"], "pedido")
+            st.session_state["_auto_fallo" if err else "_auto_hecho"] = firma
+            if err:
+                st.session_state.setdefault("avisos_almacen", []).append(err)
+        return
     with st.container(border=True):
         st.markdown(":material/sync: **Llegaron datos nuevos.** Actualizando tu pronóstico; no cierres esta pestaña.")
         err = actualizar_ahora()
@@ -1082,3 +1070,105 @@ def aviso_datos_nuevos(clave_boton="vivo_actualizar"):
                      width="stretch"):
             err = actualizar_ahora()
             st.error(err) if err else st.rerun()
+
+
+# ---------------------------------------------------------------- entrenamiento en segundo plano (GitHub Actions)
+
+def config_github():
+    try:
+        g = dict(st.secrets["github"]) if "github" in st.secrets else None
+    except Exception:  # noqa: BLE001
+        return None
+    return g if g and g.get("token") and g.get("repo") else None
+
+
+def segundo_plano_disponible() -> bool:
+    """Hay GitHub configurado y sesión iniciada (los trabajos se guardan a nombre del usuario)."""
+    return bool(config_github() and _usuario())
+
+
+@st.cache_resource(show_spinner=False)
+def _crear_cola(huella):
+    from motor import trabajos as T
+    return T.crear(dict(huella) if huella else None)
+
+
+def cola():
+    return _crear_cola(_huella_config())
+
+
+def encolar(registro_id, origen="pedido"):
+    """Anota el trabajo y avisa a GitHub. Devuelve el error o None."""
+    from motor import trabajos as T
+    g = config_github()
+    try:
+        t = cola().crear(_usuario()["correo"], registro_id, origen)
+    except Exception as e:  # noqa: BLE001
+        return f"No se pudo anotar el entrenamiento: {type(e).__name__}. ¿Corriste el SQL de trabajos en Supabase?"
+    try:
+        T.disparar_github(g["token"], g["repo"], t["id"], g.get("workflow", "entrenar.yml"), g.get("rama", "main"))
+    except Exception as e:  # noqa: BLE001
+        cola().actualizar(t["id"], estado="error", mensaje=str(e)[:300], terminado=T.ahora())
+        return f"No se pudo iniciar el entrenamiento en segundo plano: {e}"
+    st.session_state["trabajo"] = {"id": t["id"], "registro": registro_id}
+    return None
+
+
+def trabajo_activo():
+    """Trabajo en curso del análisis abierto (o del que se está generando), o None."""
+    r = registro_actual() or st.session_state.get("registro")
+    reg_id = (st.session_state.get("trabajo") or {}).get("registro") or (r or {}).get("id")
+    if not reg_id or not segundo_plano_disponible():
+        return None
+    try:
+        t = cola().ultimo(reg_id)
+    except Exception:  # noqa: BLE001
+        return None
+    if t and t["estado"] in ("pendiente", "corriendo"):
+        return t
+    seguido = st.session_state.get("trabajo")
+    if t and seguido and seguido["id"] == t["id"]:
+        return t                      # recién terminó: el panel lo muestra y recarga el análisis
+    return None
+
+
+def _hace(valor):
+    try:
+        seg = (pd.Timestamp.now(tz="UTC") - pd.Timestamp(valor)).total_seconds()
+    except Exception:  # noqa: BLE001
+        return ""
+    return "recién" if seg < 60 else f"hace {int(seg // 60)} min"
+
+
+@st.fragment(run_every=10)
+def panel_trabajo():
+    """Estado del entrenamiento en segundo plano; al terminar, carga el modelo nuevo."""
+    t = trabajo_activo()
+    if t is None:
+        return
+    if t["estado"] == "listo":
+        st.session_state.pop("trabajo", None)
+        reg = repositorio().obtener(_usuario()["correo"], t["registro_id"])
+        if reg:
+            with st.spinner("Cargando el pronóstico actualizado…"):
+                abrir_pronostico(reg)
+        st.session_state["_aviso_listo"] = True
+        st.rerun(scope="app")
+    if t["estado"] == "error":
+        st.session_state.pop("trabajo", None)
+        st.error(f"El entrenamiento en segundo plano falló: {t.get('mensaje') or 'sin detalle'}",
+                 icon=":material/error:")
+        return
+    with st.container(border=True):
+        c1, c2 = st.columns([3, 1.2], vertical_alignment="center")
+        texto = "en cola, esperando un computador libre" if t["estado"] == "pendiente" else (t.get("mensaje") or "")
+        c1.markdown(f":material/cloud_sync: **Actualizando tu pronóstico en segundo plano** · {texto}  \n"
+                    f"<span style='color:#6b6a66;font-size:.85rem'>Empezó {_hace(t['creado'])}. Puedes seguir usando "
+                    f"el sitio o cerrarlo: cuando termine, el pronóstico se carga solo.</span>",
+                    unsafe_allow_html=True)
+        c2.progress(float(t.get("progreso") or 0.0))
+
+
+def aviso_listo():
+    if st.session_state.pop("_aviso_listo", False):
+        st.toast("Pronóstico actualizado con los datos nuevos.", icon=":material/check_circle:")
