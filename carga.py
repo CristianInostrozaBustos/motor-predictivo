@@ -17,7 +17,7 @@ def bloque_carga():
         except Exception:  # noqa: BLE001
             _anteriores = []
         if _anteriores:
-            with st.container(border=True):
+            with st.container(key="carga_anterior"):
                 c1, c2 = st.columns([4, 1], vertical_alignment="bottom")
                 _reg = c1.selectbox(
                     "Cargar un análisis anterior", _anteriores, index=None, placeholder="Elige uno de tus análisis",
@@ -39,7 +39,7 @@ def bloque_carga():
         st.caption(":material/history: Inicia sesión con Google (barra lateral) para volver a tus análisis anteriores "
                    "sin subir el archivo de nuevo.")
 
-    with st.container(border=True):
+    with st.container(key="carga_origen"):
         origen = st.segmented_control("Origen", ["Subir archivo", "Pegar un link", "Usar un ejemplo"],
                                       default="Subir archivo", label_visibility="collapsed", key="origen_datos")
         if origen == "Pegar un link":
