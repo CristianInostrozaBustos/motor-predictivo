@@ -72,28 +72,17 @@ if st.session_state.get("_auto_error"):
 # ---------------------------------------------------------------- cuándo actualizar
 with st.container(border=True):
     st.markdown("**Cuándo actualizar**")
-    auto = st.toggle("Actualizar automáticamente", value=vivo["modo"] == "auto",
-                     help="Apenas llegan datos nuevos, el sistema vuelve a entrenar con ellos.")
-    cada = vivo.get("cada", "pedido")
-    if not auto:
-        cada = st.radio("Cuándo quieres actualizar", list(S.CADA), index=list(S.CADA).index(cada)
-                        if cada in S.CADA else 0, format_func=S.CADA.get, horizontal=True)
-        st.caption("Mientras tanto, cuando haya datos nuevos verás el aviso rojo en **1. Tus datos**.")
-    else:
-        if S.segundo_plano_disponible():
-            st.caption("El reentrenamiento corre en segundo plano: puedes seguir usando el sitio o cerrarlo.")
-        else:
-            st.caption("El reentrenamiento toma entre 1 y 4 minutos: no cierres la pestaña mientras dice "
-                       "*Actualizando tu pronóstico*.")
-    nuevo = {"modo": "auto" if auto else "manual", "cada": cada}
-    if nuevo != {"modo": vivo["modo"], "cada": vivo.get("cada", "pedido")}:
-        if nuevo["modo"] != vivo["modo"]:
-            if auto:
-                st.session_state.pop("_auto_hecho", None)
-                st.session_state.pop("_auto_fallo", None)
-            else:
-                S.detener_automatico()
-        S.guardar_config_vivo(nuevo)
+    actual = "auto" if vivo["modo"] == "auto" else ("semana" if vivo.get("cada") in ("semana", "dia") else "pedido")
+    eleccion = st.radio("Cuándo actualizar", list(S.MODOS), index=list(S.MODOS).index(actual),
+                        format_func=S.MODOS.get, label_visibility="collapsed")
+    if eleccion != actual:
+        if eleccion == "auto":
+            st.session_state.pop("_auto_hecho", None)
+            st.session_state.pop("_auto_fallo", None)
+        elif actual == "auto":
+            S.detener_automatico()
+        S.guardar_config_vivo({"modo": "auto" if eleccion == "auto" else "manual",
+                               "cada": "semana" if eleccion == "semana" else "pedido"})
         st.rerun()
 
 # ---------------------------------------------------------------- conexión por API (solo desarrollador)

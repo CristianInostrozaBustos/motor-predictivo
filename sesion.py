@@ -832,7 +832,8 @@ def abrir_pronostico(reg, progreso=None):
 # ---------------------------------------------------------------- datos en vivo
 
 VIVO_DEFECTO = {"modo": "auto", "cada": "pedido"}
-CADA = {"pedido": "Solo cuando yo lo pida", "dia": "Una vez al día", "semana": "Una vez a la semana"}
+MODOS = {"auto": "Automático (apenas lleguen datos)", "semana": "Una vez a la semana",
+         "pedido": "Solo cuando yo lo pida"}
 REVISAR_CADA_SEG = 60
 
 
