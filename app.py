@@ -29,24 +29,38 @@ grupo_datos = (p_datos, p_act, p_an)
 st.logo("logo.png", size="large")
 
 pg = st.navigation([inicio] + [p for ps in secciones.values() for p in ps] + [p_act, p_an], position="hidden")
+urls_datos = [x.url_path for x in grupo_datos]
+
+
+def boton_menu(p, activo, extra=""):
+    """Enlace del menú: lleva a la página; si ya está abierta, pliega o despliega su submenú."""
+    abierto = f"_sub_{p.url_path or 'inicio'}"
+    with st.container(key=f"nav_{p.url_path or 'inicio'}{'_activo' if activo else ''}{extra}"):
+        if st.button(p.title, key=f"navbtn_{p.url_path or 'inicio'}", width="stretch",
+                     icon=p.icon if p.icon else None):
+            if activo:
+                st.session_state[abierto] = not st.session_state.get(abierto, True)
+                st.rerun()
+            st.session_state[abierto] = True
+            st.switch_page(p)
+    return activo and st.session_state.get(abierto, True)
+
+
 with st.sidebar:
-    st.page_link(inicio)
-cuenta.caja_cuenta()
-with st.sidebar:
+    boton_menu(inicio, pg.url_path == inicio.url_path)
     for nombre, ps in secciones.items():
-        st.markdown(f'<div class="seccion-menu">{nombre}</div>', unsafe_allow_html=True)
+        if nombre != "Pronosticar":
+            st.markdown(f'<div class="seccion-menu">{nombre}</div>', unsafe_allow_html=True)
         for p in ps:
             if p is p_datos:
                 alertas = S.alertas_datos()
-                with st.container(key="menu_tus_datos" + ("_activo" if pg.url_path in [x.url_path for x in grupo_datos]
-                                                          else "") + ("_alerta" if alertas else "")):
-                    st.page_link(p)
-                if pg.url_path in [x.url_path for x in grupo_datos]:
+                if boton_menu(p, pg.url_path in urls_datos, "_alerta" if alertas else ""):
                     S.menu_tus_datos(pg, *grupo_datos, alertas)
                 continue
-            st.page_link(p)
-            if p.url_path == pg.url_path:
+            if boton_menu(p, p.url_path == pg.url_path):
                 S.menu_vistas(p.url_path.split("/")[-1])
+cuenta.caja_cuenta()
+with st.sidebar:
     st.divider()
 if pg.url_path != p_datos.url_path:
     S.actualizacion_automatica()

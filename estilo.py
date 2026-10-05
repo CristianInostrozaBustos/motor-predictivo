@@ -205,7 +205,19 @@ section[data-testid="stSidebar"] [class*="st-key-vistas_"] label p { font-size: 
 section[data-testid="stSidebar"] [data-testid="stPageLink"] a { padding: 5px 8px; border-radius: 8px; }
 section[data-testid="stSidebar"] [class*="st-key-menu_tus_datos_activo"] [data-testid="stPageLink"] a {
   background: rgba(255,255,255,0.08); }
-section[data-testid="stSidebar"] [class*="st-key-menu_tus_datos"][class*="_alerta"] [data-testid="stPageLink"] a::after,
+section[data-testid="stSidebar"] [class*="st-key-nav_"] button { background: transparent !important; border: none !important;
+  box-shadow: none !important; justify-content: flex-start; padding: 6px 10px; min-height: 0; border-radius: 9px;
+  font-weight: 400; color: #e6edff !important; }
+section[data-testid="stSidebar"] [class*="st-key-nav_"] button > div { justify-content: flex-start; }
+section[data-testid="stSidebar"] [data-testid="stRadioOption"]:not([data-selected="true"]) > div > div:first-child {
+  background: transparent !important; border: 1.5px solid rgba(205,218,245,0.45) !important; }
+section[data-testid="stSidebar"] [data-testid="stRadioOption"]:not([data-selected="true"]) > div > div:first-child > div {
+  display: none; }
+section[data-testid="stSidebar"] [class*="st-key-nav_"] button p { font-size: .95rem; font-weight: 400; color: #e6edff !important; }
+section[data-testid="stSidebar"] [class*="st-key-nav_"] button:hover { background: rgba(255,255,255,0.06) !important; }
+section[data-testid="stSidebar"] [class*="st-key-nav_"][class*="_activo"] button { background: rgba(255,255,255,0.09) !important; }
+section[data-testid="stSidebar"] [class*="st-key-nav_"][class*="_activo"] button p { font-weight: 650; color: #ffffff !important; }
+section[data-testid="stSidebar"] [class*="st-key-nav_"][class*="_alerta"] button p::after,
 section[data-testid="stSidebar"] [class*="st-key-vistas_datos_alerta"] [role="radiogroup"] > :nth-child(2) [data-testid="stMarkdownContainer"] p::after {
   content: "1"; display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px;
   margin-left: 8px; padding: 0 5px; border-radius: 999px; background: #e5383b; color: #ffffff; font-size: .7rem;
@@ -255,6 +267,11 @@ section[data-testid="stSidebar"] [data-testid="stVerticalBlock"] { gap: 0.35rem;
 .portada .rasgos i { font-style: normal; margin: 0 10px; color: #c4c3bf; }
 .etiqueta-portada { font-size: .76rem; font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
     color: #8a8985; margin: 8px 0 8px 2px; }
+
+.resumen-chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 2px 0 10px 0; }
+.resumen-chips span { background: #ffffff; border: 1px solid rgba(11,11,11,0.08); border-radius: 999px;
+    padding: 6px 14px; font-size: .9rem; color: #52514e; }
+.resumen-chips b { color: #0b0b0b; font-weight: 650; }
 
 .encabezado { margin: 4px 0 18px 0; }
 .encabezado .eyebrow { font-size: 0.76rem; letter-spacing: 0.1em; text-transform: uppercase; color: #1c5cab; font-weight: 700; }

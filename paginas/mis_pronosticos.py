@@ -93,7 +93,7 @@ for reg in lista:
                 try:
                     S.abrir_pronostico(reg, lambda f, t: barra.progress(min(f, 1.0), text=t))
                     barra.empty()
-                    st.switch_page("paginas/pronostico.py")
+                    st.switch_page("paginas/datos.py")
                 except Exception as e:  # noqa: BLE001
                     barra.empty()
                     st.error(f"No se pudo abrir: {e}")

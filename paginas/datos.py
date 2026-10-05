@@ -120,10 +120,13 @@ n_ent = dp.df["entidad"].nunique()
 
 # ---------------------------------------------------------------- resumen amable
 f0, f1 = dp.df["fecha"].min(), dp.df["fecha"].max()
-c1, c2, c3 = st.columns(3)
-c1.metric(S.mayus(S.nombre_entidad(dp, n_ent != 1)), E.num(n_ent))
-c2.metric("Historial", f"{f0:%m/%Y} – {f1:%m/%Y}")
-c3.metric("Datos", fi["nombre"].capitalize(), help="Frecuencia detectada en tu archivo.")
+datos_fr = {"diaria": "diarios", "semanal": "semanales", "mensual": "mensuales",
+            "trimestral": "trimestrales"}.get(fi["nombre"], fi["nombre"])
+st.markdown(
+    f'<div class="resumen-chips"><span><b>{E.num(n_ent)}</b> {S.nombre_entidad(dp, n_ent != 1)}</span>'
+    f'<span>Historial <b>{f0:%m/%Y} – {f1:%m/%Y}</b></span>'
+    f'<span title="Frecuencia detectada en tu archivo">Datos <b>{datos_fr}</b></span></div>',
+    unsafe_allow_html=True)
 
 with st.container(border=True):
     todas = sorted(dp.df["entidad"].unique())
