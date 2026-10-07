@@ -116,7 +116,7 @@ def registrar_plantilla():
         margin=dict(l=8, r=12, t=40, b=8),
         hovermode="x unified",
         hoverlabel=dict(bgcolor="white", bordercolor=GRILLA, font=dict(family=fuente, size=12, color=TINTA)),
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5,
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0,
                     bgcolor="rgba(0,0,0,0)", font=dict(size=11, color=TINTA_2), itemsizing="constant"),
         xaxis=dict(showgrid=False, linecolor=EJE, showspikes=True, spikemode="across", spikesnap="cursor",
                    spikecolor="rgba(120,118,110,0.35)", spikethickness=1, spikedash="solid", ticks="outside",
@@ -555,13 +555,14 @@ def excel_bytes(hojas):
 
 # ---------------------------------------------------------------- figuras reutilizables
 
-def fig_banda(fechas, p10, p50, p90, nombre_banda="Rango P10–P90", nombre_p50="Pronóstico (P50)", hover="%{y:,.0f} u."):
+def fig_banda(fechas, p10, p50, p90, nombre_banda="Rango P10–P90", nombre_p50="Pronóstico (P50)", hover="%{y:,.0f} u.",
+              color=None):
     """Banda de incertidumbre + línea P50. Devuelve la figura para agregarle más trazas."""
     fig = go.Figure()
     fig.add_trace(go.Scatter(x=fechas, y=p90, mode="lines", line=dict(width=0), hoverinfo="skip", showlegend=False))
-    fig.add_trace(go.Scatter(x=fechas, y=p10, mode="lines", line=dict(width=0), fill="tonexty", fillcolor=AZUL_BANDA,
-                             name=nombre_banda, hoverinfo="skip"))
-    fig.add_trace(go.Scatter(x=fechas, y=p50, mode="lines", name=nombre_p50, line=dict(color=AZUL, width=2.2),
+    fig.add_trace(go.Scatter(x=fechas, y=p10, mode="lines", line=dict(width=0), fill="tonexty",
+                             fillcolor=rgba(color, 0.16) if color else AZUL_BANDA, name=nombre_banda, hoverinfo="skip"))
+    fig.add_trace(go.Scatter(x=fechas, y=p50, mode="lines", name=nombre_p50, line=dict(color=color or AZUL, width=2.2),
                              hovertemplate=hover))
     # P10/P90 en el tooltip sin dibujar línea
     fig.add_trace(go.Scatter(x=fechas, y=p90, name="P90", mode="lines", line=dict(width=0),

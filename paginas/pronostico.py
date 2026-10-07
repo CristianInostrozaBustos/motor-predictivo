@@ -66,7 +66,8 @@ if vista == "Prueba con datos pasados":
         else:
             c3.metric("Mejora vs. sin modelo", "—", help="No se puede calcular: en el período de prueba no hubo "
                                                           "demanda o la referencia sin modelo no tuvo error.")
-    fig = E.fig_banda(bt["fecha"], bt["P10"], bt["P50"], bt["P90"], nombre_p50="Lo que pronosticó")
+    fig = E.fig_banda(bt["fecha"], bt["P10"], bt["P50"], bt["P90"], nombre_p50="Lo que pronosticó",
+                      color=E.color_sku(prueba, entidades))
     fig.add_trace(go.Scatter(x=bt["fecha"], y=bt["real"], name="Lo que pasó", line=dict(color=E.TINTA, width=1.8),
                              hovertemplate="%{y:,.0f}"))
     fig.add_trace(go.Scatter(x=bt["fecha"], y=bt["naive"], name="Sin modelo (repetir " + temporada + ")",
@@ -102,30 +103,32 @@ elif vista == "Resumen":
     k4.metric("Error del modelo", E.pct(met.loc[ent, "wape"]) if ent in met.index else "—",
               help="Qué tanto se equivocó el modelo al pronosticar datos pasados que no vio (WAPE).")
 
+    col_e = E.color_sku(ent, entidades)
     a1, a2 = st.columns(2, gap="medium")
     with a1:
         atras = min(len(hist_t), max(2 * H, {"D": 90, "W": 52, "M": 24, "Q": 12}[freq]))
         h_ver = hist_t.tail(atras)
         fig = go.Figure()
         fig.add_trace(go.Scatter(x=pd.concat([fechas_f, fechas_f[::-1]]), y=pd.concat([f_e["P90"], f_e["P10"][::-1]]),
-                                 fill="toself", fillcolor=E.AZUL_BANDA, line=dict(width=0), hoverinfo="skip",
+                                 fill="toself", fillcolor=E.rgba(col_e, 0.16), line=dict(width=0), hoverinfo="skip",
                                  name="Rango probable"))
-        fig.add_trace(go.Scatter(x=h_ver.index, y=h_ver.values, name="Historial", mode="lines",
-                                 line=dict(color=E.TINTA_MUTED, width=1.4), hovertemplate="%{y:,.0f}"))
+        fig.add_trace(go.Scatter(x=h_ver.index, y=h_ver.values, name="Historial", mode="lines", opacity=0.55,
+                                 line=dict(color=col_e, width=1.3), hovertemplate="%{y:,.0f}"))
         fig.add_trace(go.Scatter(x=fechas_f, y=f_e["P50"], name="Pronóstico", mode="lines",
-                                 line=dict(color=E.AZUL, width=2.4), hovertemplate="%{y:,.0f}"))
+                                 line=dict(color=col_e, width=2.4), hovertemplate="%{y:,.0f}"))
         fig.update_layout(title=f"{obj} · {ent}")
         E.grafico(fig, key="tab_total", alto=300, ir_a=("pronostico", "Pronóstico"))
     with a2:
         if len(entidades) > 1:
             tot = pd.Series({e: float(fut[e]["P50"].sum()) for e in entidades}).sort_values().tail(12)
             fig = go.Figure(go.Bar(y=tot.index.astype(str), x=tot.values, orientation="h",
-                                   marker_color=[E.AZUL_OSCURO if e == ent else E.AZUL for e in tot.index],
+                                   marker_color=[E.color_sku(e, entidades) for e in tot.index],
+                                   marker_opacity=[1 if e == ent else 0.5 for e in tot.index],
                                    hovertemplate="%{x:,.0f}<extra></extra>"))
             fig.update_layout(title=f"Demanda esperada por {S.nombre_entidad(dp)} ({H} {fi['unidad_pl']})",
                               hovermode="closest")
         else:
-            fig = go.Figure(go.Bar(x=fechas_f, y=f_e["P50"], marker_color=E.AZUL, hovertemplate="%{y:,.0f}<extra></extra>"))
+            fig = go.Figure(go.Bar(x=fechas_f, y=f_e["P50"], marker_color=col_e, hovertemplate="%{y:,.0f}<extra></extra>"))
             fig.update_layout(title=f"Demanda esperada por {fi['unidad']}")
         E.grafico(fig, key="tab_por_ent", alto=300, ir_a=("pronostico", "Pronóstico"),
                   eje_entidad="y" if len(entidades) > 1 else None)
@@ -137,7 +140,7 @@ elif vista == "Resumen":
             fig.add_trace(go.Scatter(x=bt["fecha"], y=bt["real"], name="Lo que pasó", mode="lines",
                                      line=dict(color=E.TINTA, width=1.6), hovertemplate="%{y:,.0f}"))
             fig.add_trace(go.Scatter(x=bt["fecha"], y=bt["P50"], name="Lo que pronosticó", mode="lines",
-                                     line=dict(color=E.AZUL, width=2), hovertemplate="%{y:,.0f}"))
+                                     line=dict(color=col_e, width=2), hovertemplate="%{y:,.0f}"))
         fig.update_layout(title=f"Prueba con datos pasados · {ent}")
         E.grafico(fig, key="tab_bt", alto=300, icono="fact_check", ir_a=("pronostico", "Prueba con datos pasados"))
     with b2:
@@ -146,9 +149,10 @@ elif vista == "Resumen":
         fig.add_trace(go.Bar(y=m.index.astype(str), x=m["wape_naive"], name="Sin modelo", orientation="h",
                              marker_color=E.GRILLA, hovertemplate="%{x:.1f}%<extra>sin modelo</extra>"))
         fig.add_trace(go.Bar(y=m.index.astype(str), x=m["wape"], name="Con el modelo", orientation="h",
-                             marker_color=E.AZUL, hovertemplate="%{x:.1f}%<extra>con el modelo</extra>"))
-        fig.update_layout(title="Error del modelo vs. sin modelo", xaxis_ticksuffix="%",
-                          barmode="group", hovermode="closest", legend_traceorder="reversed")
+                             marker_color=[E.color_sku(e, entidades) for e in m.index],
+                             hovertemplate="%{x:.1f}%<extra>con el modelo</extra>"))
+        fig.update_layout(title="Error con el modelo vs. sin modelo (gris)", xaxis_ticksuffix="%",
+                          barmode="group", hovermode="closest", showlegend=False)
         E.grafico(fig, key="tab_error", alto=300, icono="target", ir_a=("pronostico", "Precisión"))
     kp.mostrar()
 else:

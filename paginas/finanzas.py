@@ -196,7 +196,8 @@ def tablero(ent):
         y = f["P50"].to_numpy() * infl[ent] * (S.precio(ent) or 1)
         en_pesos = bool(S.precio(ent))
         div, eje, hov = E.escala_pesos(y.max()) if en_pesos else (1.0, "Unidades", "%{y:,.0f} u.")
-        fig = go.Figure(go.Bar(x=f["fecha"], y=y / div, marker_color=E.AZUL, hovertemplate=hov + "<extra></extra>"))
+        fig = go.Figure(go.Bar(x=f["fecha"], y=y / div, marker_color=E.color_sku(ent, entidades),
+                               hovertemplate=hov + "<extra></extra>"))
         fig.update_layout(title=("Ingresos" if en_pesos else "Ventas") + f" esperados por {fi['unidad']} · {ent}",
                           yaxis_title=eje, hovermode="closest")
         E.grafico(fig, key="tab_fin_periodo", alto=300, icono="payments", ir_a=("finanzas", "Meta e ingresos"))
@@ -205,7 +206,8 @@ def tablero(ent):
         serie = pd.Series(base).sort_values().tail(12)
         div, eje, hov = E.escala_pesos(serie.max()) if ing else (1.0, "Unidades", "%{x:,.0f} u.")
         fig = go.Figure(go.Bar(y=serie.index.astype(str), x=serie.values / div, orientation="h",
-                               marker_color=[E.AZUL_OSCURO if e == ent else E.AZUL for e in serie.index],
+                               marker_color=[E.color_sku(e, entidades) for e in serie.index],
+                               marker_opacity=[1 if e == ent else 0.5 for e in serie.index],
                                hovertemplate=hov.replace("{y", "{x") + "<extra></extra>"))
         fig.update_layout(title=("Ingresos" if ing else "Ventas") + f" esperados por {S.nombre_entidad(dp)}",
                           xaxis_title=eje, hovermode="closest")
@@ -219,7 +221,7 @@ def tablero(ent):
             mensual = mensual.iloc[:-1]       # último mes incompleto
         div, eje, hov = E.escala_pesos(mensual.max()) if en_p else (1.0, "Unidades", "%{y:,.0f} u.")
         fig = go.Figure(go.Scatter(x=mensual.index, y=mensual.values / div, mode="lines", name="Historial",
-                                   line=dict(color=E.AZUL, width=2), hovertemplate=hov))
+                                   line=dict(color=E.color_sku(ent, entidades), width=2), hovertemplate=hov))
         fig.update_layout(title=("Ingresos" if en_p else "Ventas") + f" por mes (historial) · {ent}", yaxis_title=eje)
         E.grafico(fig, key="tab_fin_mes", alto=300, icono="calendar_month", ir_a=("finanzas", vista_fuerte))
     with b2:
@@ -231,7 +233,7 @@ def tablero(ent):
             fig = go.Figure(go.Bar(x=[n.capitalize() for n in nombres], y=rel.values,
                                    marker_color=[E.AQUA if v >= 0 else E.ROJO for v in rel.values],
                                    hovertemplate="%{y:+.1f}%<extra></extra>"))
-            fig.update_layout(title=f"Ventas por {que.split()[0]} vs. el promedio · {ent}", yaxis_ticksuffix="%",
+            fig.update_layout(title=f"{'Días' if que.startswith('día') else 'Meses'} fuertes vs. el promedio · {ent}", yaxis_ticksuffix="%",
                               hovermode="closest")
             E.grafico(fig, key="tab_fin_patron", alto=300, icono="date_range", ir_a=("finanzas", vista_fuerte))
     kp.mostrar()
@@ -378,11 +380,12 @@ else:
             fig.add_trace(go.Scatter(x=fechas, y=acum + P.Z_P10_P90 * sd_t, mode="lines", line=dict(width=0),
                                      hoverinfo="skip", showlegend=False))
             fig.add_trace(go.Scatter(x=fechas, y=np.clip(acum - P.Z_P10_P90 * sd_t, 0, None), mode="lines", line=dict(width=0),
-                                     fill="tonexty", fillcolor=E.AZUL_BANDA, name="Rango probable", hoverinfo="skip"))
-            fig.add_trace(go.Scatter(x=fechas, y=acum, name="Pronóstico acumulado", line=dict(color=E.AZUL, width=2.4),
-                                     hovertemplate=hov_y))
+                                     fill="tonexty", fillcolor=E.rgba(E.color_sku(ent, entidades), 0.16),
+                                     name="Rango probable", hoverinfo="skip"))
+            fig.add_trace(go.Scatter(x=fechas, y=acum, name="Pronóstico acumulado",
+                                     line=dict(color=E.color_sku(ent, entidades), width=2.4), hovertemplate=hov_y))
             fig.add_trace(go.Scatter(x=fechas, y=np.linspace(meta_g / H, meta_g, H), name="Meta", mode="lines",
-                                     line=dict(color=E.NARANJO, width=1.8, dash="dash"), hovertemplate=hov_y))
+                                     line=dict(color=E.TINTA_2, width=1.8, dash="dash"), hovertemplate=hov_y))
             fig.update_layout(title=("Ingresos acumulados" if en_pesos else "Ventas acumuladas") + f" vs. tu meta · {nombre_vista}",
                               yaxis_title=eje_y, height=400)
             E.grafico(fig, key="fig_meta")
