@@ -117,8 +117,7 @@ def comparar_productos(ent):
 
 
 def insumos(ent):
-    st.caption("Indica cuánto insumo usa cada unidad vendida (por ejemplo, 18 g de café por taza) y se calcula "
-               "cuánto necesitas: lo normal y lo prudente (escenario alto).")
+    st.caption("Indica cuánto insumo usa cada unidad vendida y se calcula cuánto necesitas: lo normal y lo prudente.")
     clave_ins = f"insumos_{S.clave_dataset(dp)}"
     base_ins = st.session_state.get(clave_ins, pd.DataFrame({
         "Insumo": pd.Series(dtype="str"), "Cantidad por unidad": pd.Series(dtype="float"),
@@ -139,8 +138,8 @@ def insumos(ent):
             normal = fut[ent]["P50"].sum() * r["Cantidad por unidad"]
             prudente = fut[ent]["P90"].sum() * r["Cantidad por unidad"]
             unidad = "" if pd.isna(r["Unidad"]) else f" {r['Unidad']}"
-            filas.append({"Insumo": r["Insumo"], "Necesitas (normal)": f"{E.num(normal)}{unidad}",
-                          "Prudente (escenario alto)": f"{E.num(prudente)}{unidad}"})
+            filas.append({"Insumo": r["Insumo"], "Normal": f"{E.num(normal)}{unidad}",
+                          "Prudente": f"{E.num(prudente)}{unidad}"})
         if filas:
             st.markdown(f"#### Lo que necesita{(' ' + str(ent)) if len(entidades) > 1 else 's'} en los próximos {H} {fi['unidad_pl']}")
             st.dataframe(pd.DataFrame(filas), hide_index=True, width="stretch")

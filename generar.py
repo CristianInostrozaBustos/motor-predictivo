@@ -22,7 +22,7 @@ def bloque_horizonte(dp, plan, extra=None):
         fila = st.container(horizontal=True, vertical_alignment="center", gap="small", key="horizonte_fila")
         with fila.container(key="horizonte_chip", width="content"), st.popover(
                 f"{h_txt} {fi['unidad_pl'] if h_txt != 1 else fi['unidad']} hacia adelante",
-                icon=":material/date_range:", width="content"):
+                width="content"):
             h = st.slider(f"{fi['unidad_pl'].capitalize()} hacia adelante", 1, plan.horizonte_max, h_prev,
                           key=f"h_{clave}")
             st.caption(f"Hasta {plan.horizonte_max} {fi['unidad_pl']} según el historial disponible.")

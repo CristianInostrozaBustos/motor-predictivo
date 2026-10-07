@@ -638,10 +638,10 @@ def puntos_multi(opciones, estado, key, formato=None, maximo=None, al_cambiar=No
     st.session_state[estado] = sel
     if con_todos and len(opciones) > 3:
         with st.container(horizontal=True, gap="small", key=f"todos_{key}"):
-            st.button("Todos", key=f"_todos_{key}", type="tertiary", icon=":material/done_all:",
+            st.button("Todos", key=f"_todos_{key}", type="tertiary",
                       on_click=_marcar_todos, args=(opciones, estado, al_cambiar, True),
                       disabled=len(sel) == len(opciones))
-            st.button("Solo uno", key=f"_uno_{key}", type="tertiary", icon=":material/remove_done:",
+            st.button("Solo uno", key=f"_uno_{key}", type="tertiary",
                       on_click=_marcar_todos, args=(opciones, estado, al_cambiar, False), disabled=len(sel) <= 1)
     with st.container(key=f"puntos_{key}", gap=None):
         for i, o in enumerate(opciones):
@@ -704,7 +704,7 @@ def fila_chips(key):
 def chip(fila, etiqueta, key, icono=None):
     """Etiqueta compacta que despliega su contenido: `with S.chip(fila, "Meta: $1M", "meta"): ...`."""
     with fila.container(key=f"chip_{key}", width="content"):
-        return st.popover(etiqueta, icon=icono, width="content")
+        return st.popover(etiqueta, width="content")
 
 
 def info_pie(textos):
