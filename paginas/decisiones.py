@@ -332,25 +332,53 @@ else:
     clave_plan = f"{clave}_{ent}"
     costo = cc_ent
     fila2 = S.fila_chips("dec_compra")
+    cfg_act = st.session_state.get("config_actual")
+    planes = cfg_act.setdefault("planes", {}) if cfg_act is not None else {}
+    guardado = planes.get(str(ent)) or {}
+    f_min, f_max = pr["fecha"].iloc[0].date(), pr["fecha"].iloc[-1].date()
+    q_def = float(guardado.get("q", round(q0)))
+    m_def = float(guardado.get("monto", round(q0 * (costo or 0))))
+    f_def = f0.date()
+    if guardado.get("fecha"):
+        f_def = min(max(pd.Timestamp(guardado["fecha"]).date(), f_min), f_max)
+    l_def = float(guardado.get("lt", round(d.L * dias_p, 1)))
+    if costo and guardado.get("por") and "plan_por" not in ss:
+        ss["plan_por"] = guardado["por"]
     por = ss.get("plan_por", "Unidades") if costo else "Unidades"
     k_q, k_m, k_f, k_l = (f"q_{clave_plan}", f"m_{clave_plan}", f"fecha_{clave_plan}", f"ltc_{clave_plan}")
-    etiqueta_q = (f"{E.num(ss.get(k_q, float(round(q0))))} u." if por == "Unidades"
-                  else E.clp_corto(ss.get(k_m, float(round(q0 * costo)))))
+    etiqueta_q = (f"{E.num(ss.get(k_q, q_def))} u." if por == "Unidades" else E.clp_corto(ss.get(k_m, m_def)))
+    monto = None
     with S.chip(fila2, f"Compra: {etiqueta_q}", "dec_q"):
         if costo:
             por = S.elegir_uno("Defino la compra en", ["Unidades", "Pesos ($)"], key="por", estado="plan_por")
         if por == "Unidades":
-            q = st.number_input("Cantidad a comprar (u.)", 0.0, None, float(round(q0)), 100.0, format="%.0f", key=k_q)
+            q = st.number_input("Cantidad a comprar (u.)", 0.0, None, q_def, 100.0, format="%.0f", key=k_q)
         else:
-            monto = st.number_input("Monto a gastar ($)", 0.0, None, float(round(q0 * costo)), 10000.0, format="%.0f",
-                                    key=k_m)
+            monto = st.number_input("Monto a gastar ($)", 0.0, None, m_def, 10000.0, format="%.0f", key=k_m)
             q = float(np.floor(monto / costo))
-    with S.chip(fila2, f"Fecha de compra: {ss.get(k_f, f0.date()):%d/%m/%Y}", "dec_fecha"):
-        fecha_c = st.date_input("Fecha de la compra", f0.date(), min_value=pr["fecha"].iloc[0].date(),
-                                max_value=pr["fecha"].iloc[-1].date(), format="DD/MM/YYYY", key=k_f)
-    with S.chip(fila2, f"Llega en: {E.num(ss.get(k_l, float(round(d.L * dias_p, 1))), 1)} días", "dec_ltc"):
-        lt_c = st.number_input("Lead time de esta compra (días)", 0.0, 365.0, float(round(d.L * dias_p, 1)), 1.0,
+    with S.chip(fila2, f"Fecha de compra: {ss.get(k_f, f_def):%d/%m/%Y}", "dec_fecha"):
+        fecha_c = st.date_input("Fecha de la compra", f_def, min_value=f_min, max_value=f_max, format="DD/MM/YYYY",
+                                key=k_f)
+    with S.chip(fila2, f"Llega en: {E.num(ss.get(k_l, l_def), 1)} días", "dec_ltc"):
+        lt_c = st.number_input("Lead time de esta compra (días)", 0.0, 365.0, l_def, 1.0,
                                format="%.1f", key=k_l, help="Cámbialo para simular, por ejemplo, una compra urgente.")
+    # el plan queda guardado con el análisis (Mis pronósticos) y se restaura al abrirlo
+    plan_nuevo = {"q": float(q), "fecha": fecha_c.isoformat(), "lt": float(lt_c), "por": por}
+    if monto is not None:
+        plan_nuevo["monto"] = float(monto)
+    sugerido = (abs(q - round(q0)) < 0.5 and fecha_c == f0.date() and abs(lt_c - round(d.L * dias_p, 1)) < 0.05)
+    if cfg_act is not None and plan_nuevo != guardado and not (sugerido and not guardado):
+        planes[str(ent)] = plan_nuevo
+        S.actualizar_registro(config=cfg_act)
+    if guardado or not sugerido:
+        with fila2.container(width="content"):
+            if st.button("Volver a lo sugerido", type="tertiary", key="plan_reset"):
+                planes.pop(str(ent), None)
+                for k in (k_q, k_m, k_f, k_l):
+                    ss.pop(k, None)
+                if cfg_act is not None:
+                    S.actualizar_registro(config=cfg_act)
+                st.rerun()
 
     t_c = int(np.searchsorted(pr["fecha"].dt.normalize().to_numpy(), np.datetime64(pd.Timestamp(fecha_c))))
     t_c = min(t_c, len(pr) - 1)

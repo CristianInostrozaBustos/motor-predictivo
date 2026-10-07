@@ -119,9 +119,13 @@ st.session_state["dp"] = dp
 if st.session_state.get("_menu_dp") != S.clave_dataset(dp):     # el submenú lateral se arma antes que la página
     st.session_state["_menu_dp"] = S.clave_dataset(dp)
     st.rerun()
+_planes_previos = (st.session_state.get("config_actual") or {}).get("planes") or \
+    ((S.registro_actual() or {}).get("config") or {}).get("planes")
 st.session_state["config_actual"] = dict(roles=roles, exogenas=list(exogenas), frecuencia=frecuencia, relleno=relleno,
                                          negativos=bool(negativos), nombre_serie=nombre_serie.strip(),
                                          suavizar_picos=bool(suavizar), inflacion=S.config_inflacion())
+if _planes_previos:
+    st.session_state["config_actual"]["planes"] = _planes_previos
 _lo = st.session_state.get("link_origen")
 if _lo and _lo["nombre"] == nombre:
     st.session_state["config_actual"]["vivo"] = {**S.VIVO_DEFECTO, "link": _lo["url"], "link_base": True,
