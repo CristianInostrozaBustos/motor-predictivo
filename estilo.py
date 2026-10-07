@@ -107,24 +107,27 @@ def registrar_plantilla():
     fuente = "Inter, system-ui, -apple-system, Segoe UI, sans-serif"
     t = go.layout.Template()
     t.layout = go.Layout(
-        font=dict(family=fuente, size=13, color=TINTA_2),
+        font=dict(family=fuente, size=12, color=TINTA_2),
         title=dict(font=dict(size=15, color=TINTA), x=0, xanchor="left", xref="container", y=1, yref="container", yanchor="top", pad=dict(t=12, l=4)),
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
         colorway=SERIES,
-        margin=dict(l=8, r=8, t=72, b=8),
+        margin=dict(l=8, r=12, t=40, b=8),
         hovermode="x unified",
         hoverlabel=dict(bgcolor="white", bordercolor=GRILLA, font=dict(family=fuente, size=12, color=TINTA)),
-        legend=dict(orientation="h", yanchor="bottom", y=1.01, xanchor="left", x=0,
-                    bgcolor="rgba(0,0,0,0)", font=dict(size=12, color=TINTA_2)),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5,
+                    bgcolor="rgba(0,0,0,0)", font=dict(size=11, color=TINTA_2), itemsizing="constant"),
         xaxis=dict(showgrid=False, linecolor=EJE, showspikes=True, spikemode="across", spikesnap="cursor",
-                   spikecolor="rgba(120,118,110,0.35)", spikethickness=1, spikedash="solid", ticks="outside", tickcolor=EJE,
-                   tickfont=dict(color=TINTA_MUTED), title=dict(font=dict(color=TINTA_MUTED, size=12)),
-                   zeroline=False, automargin=True),
-        yaxis=dict(gridcolor=GRILLA, gridwidth=1, zeroline=False, linecolor="rgba(0,0,0,0)",
-                   tickfont=dict(color=TINTA_MUTED), title=dict(font=dict(color=TINTA_MUTED, size=12)),
+                   spikecolor="rgba(120,118,110,0.35)", spikethickness=1, spikedash="solid", ticks="outside",
+                   tickcolor=EJE, ticklen=4, tickfont=dict(color=TINTA_MUTED, size=11),
+                   title=dict(font=dict(color=TINTA_MUTED, size=11)), zeroline=False, automargin=True,
+                   separatethousands=True, exponentformat="none"),
+        yaxis=dict(gridcolor="#efeee9", gridwidth=1, zeroline=False, linecolor="rgba(0,0,0,0)",
+                   tickfont=dict(color=TINTA_MUTED, size=11), title=dict(font=dict(color=TINTA_MUTED, size=11)),
                    separatethousands=True, automargin=True, exponentformat="none"),
         separators=",.",
+        barcornerradius=4,
+        bargap=0.28,
     )
     t.data.scatter = [go.Scatter(line=dict(width=2), mode="lines")]
     pio.templates["motor"] = t
@@ -147,12 +150,14 @@ h3 { font-weight: 650 !important; font-size: 1.12rem !important; }
 [data-testid="stMetric"] {
     background: #ffffff;
     border: 1px solid rgba(11,11,11,0.08);
-    border-radius: 12px;
-    padding: 9px 14px 8px 14px;
-    box-shadow: 0 1px 2px rgba(11,11,11,0.04);
+    border-radius: 14px;
+    padding: 10px 14px 9px 16px;
+    box-shadow: 0 1px 3px rgba(11,11,11,0.05), 0 6px 18px rgba(11,11,11,0.04);
+    border-left: 4px solid #2a78d6;
 }
-[data-testid="stMetricLabel"] p { font-size: 0.78rem !important; color: #52514e !important; font-weight: 500; }
-[data-testid="stMetricValue"] { font-size: 1.3rem !important; font-weight: 700; color: #0b0b0b; letter-spacing: -0.02em; }
+[data-testid="stMetricLabel"] p { font-size: 0.72rem !important; color: #6b6a66 !important; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.04em; }
+[data-testid="stMetricValue"] { font-size: 1.35rem !important; font-weight: 700; color: #12305e; letter-spacing: -0.02em; }
 [data-testid="stMetricDelta"] { font-size: 0.78rem !important; }
 
 /* Contenedores con borde como tarjetas blancas */
@@ -290,6 +295,18 @@ section[data-testid="stSidebar"] [data-testid="stVerticalBlock"] { gap: 0.35rem;
 [class*="st-key-_pm_"] label:has(input:checked) > span + div {
     background: radial-gradient(circle, #ffffff 0 0.19rem, #1c5cab 0.21rem) !important; }
 [class*="st-key-puntos_"] { gap: 0.35rem !important; }
+/* tarjeta de cada gráfico */
+[class*="st-key-tarjeta_"] { background: #ffffff; border: 1px solid rgba(11,11,11,0.07); border-radius: 14px;
+    padding: 14px 16px 6px 16px; box-shadow: 0 1px 3px rgba(11,11,11,0.05), 0 6px 18px rgba(11,11,11,0.04); gap: 4px; }
+[class*="st-key-tarjeta_"] > div > [data-testid="stMarkdownContainer"] p,
+[class*="st-key-tarjeta_"] [data-testid="stMarkdown"] p { font-size: 0.98rem; font-weight: 650; color: #0b0b0b; margin: 0;
+    display: flex; align-items: center; gap: 10px; }
+[class*="st-key-tarjeta_"] [data-testid="stMarkdown"] span[role="img"] { font-size: 1.05rem; color: #1c5cab;
+    background: #e8f0fb; border-radius: 8px; padding: 5px; }
+[class*="st-key-tarjeta_"] [data-testid="stMarkdownContainer"] { margin: 0 0 2px 0 !important; }
+[class*="st-key-tarjeta_"] [data-testid="stElementContainer"]:has([data-testid="stMarkdown"]) { height: auto !important; }
+[data-testid="stVerticalBlock"]:has(> [data-testid="stLayoutWrapper"] > [class*="st-key-tarjeta_"]) {
+    border: none !important; background: transparent !important; padding: 0 !important; box-shadow: none !important; }
 .info-pie { font-size: .8rem; color: #8a8984; margin: 2px 0 10px 2px; }
 [data-testid="stPopoverBody"] { max-height: 60vh; overflow-y: auto; }
 .chip-texto { display: inline-block; font-size: .85rem; color: #6b6a66; padding: 6px 4px; white-space: nowrap; }
@@ -417,14 +434,45 @@ def ticks_fechas_es(lo, hi, max_ticks=8):
     return vals, [f"{v.day} {MESES_CORTOS[v.month - 1]}" for v in vals]
 
 
-def grafico(fig, key=None, alto=None):
+def _icono_figura(fig):
+    tipos = {t.type for t in fig.data}
+    if "bar" in tipos:
+        return "bar_chart"
+    if fig.data and all(getattr(t, "mode", None) == "markers" for t in fig.data):
+        return "scatter_plot"
+    return "show_chart"
+
+
+def _marcar_puntos(fig):
+    """Líneas con puntos en los datos cuando hay pocos (mensual, semanal); en series largas solo la línea."""
+    for t in fig.data:
+        if t.type != "scatter" or t.fill not in (None, "none") or t.showlegend is False:
+            continue
+        if (t.mode or "lines") != "lines" or (t.line.width is not None and t.line.width == 0):
+            continue
+        if t.x is not None and len(t.x) <= 60:
+            t.mode = "lines+markers"
+            t.marker.size = 6
+            t.marker.line = dict(color="#ffffff", width=1.5)
+
+
+def grafico(fig, key=None, alto=None, icono=None):
+    """Cada gráfico va en su tarjeta: título con ícono arriba a la izquierda y la figura debajo."""
     if alto:
         fig.update_layout(height=alto)
     rango = _fechas_en_x(fig)
     if rango is not None and fig.layout.xaxis.tickvals is None:
         vals, textos = ticks_fechas_es(*rango)
         fig.update_xaxes(tickmode="array", tickvals=vals, ticktext=textos, hoverformat="%d/%m/%Y")
-    st.plotly_chart(fig, width="stretch", key=key, config={"displaylogo": False, "locale": "es"})
+    _marcar_puntos(fig)
+    titulo = fig.layout.title.text if fig.layout.title and fig.layout.title.text else None
+    hay_leyenda = sum(1 for t in fig.data if t.showlegend is not False and t.name) > 1 or bool(fig.layout.showlegend)
+    fig.update_layout(title_text=None, margin=dict(t=34 if hay_leyenda else 10), paper_bgcolor="#ffffff",
+                      plot_bgcolor="#ffffff")
+    with st.container(key=f"tarjeta_{key or id(fig)}"):
+        if titulo:
+            st.markdown(f":material/{icono or _icono_figura(fig)}: " + titulo.replace("$", "\\$"))
+        st.plotly_chart(fig, width="stretch", key=key, config={"displaylogo": False, "locale": "es"})
 
 
 def excel_bytes(hojas):

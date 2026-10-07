@@ -115,6 +115,28 @@ def _a_memoria(clave, res):
     memoria[clave] = res
 
 
+def borrar_analisis(reg, con_modelo=False):
+    """Borra un análisis guardado: registro, archivo de datos, datos en vivo y, si se pide, su modelo entrenado."""
+    from motor import almacen as A
+    from motor import repositorio as Rp
+    u = _usuario()
+    repositorio().borrar(u["correo"], reg["id"])
+    pasos = [lambda: almacen_vivo().borrar_todo(u["correo"], reg["id"]),
+             lambda: almacen_persistente().borrar(A.ruta_datos(Rp.id_usuario(u["correo"]), reg["id"]))]
+    if con_modelo and reg.get("clave_modelo"):
+        pasos.append(lambda: almacen_persistente().borrar(A.ruta_modelo(reg["clave_modelo"])))
+        _almacen_modelos().pop(reg["clave_modelo"], None)
+    for paso in pasos:
+        try:
+            paso()
+        except Exception:  # noqa: BLE001
+            pass
+    if (st.session_state.get("registro") or {}).get("id") == reg["id"]:
+        for k in ("registro", "resultado", "dp", "df_raw", "config_actual", "nombre_dataset", "archivo_bytes",
+                  "link_origen", "_menu_dp"):
+            st.session_state.pop(k, None)
+
+
 def modelo_guardado(clave) -> bool:
     """True si ya existe un modelo entrenado para estos datos (en memoria o guardado)."""
     if clave in _almacen_modelos():
