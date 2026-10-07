@@ -4,7 +4,7 @@ import cuenta
 import estilo as E
 import sesion as S
 
-st.set_page_config(page_title=E.NOMBRE_APP, page_icon="favicon.png", layout="wide", initial_sidebar_state="auto")
+st.set_page_config(page_title="Motor Predictivo", page_icon="favicon.png", layout="wide", initial_sidebar_state="auto")
 E.aplicar_estilo()
 
 inicio = st.Page("paginas/inicio.py", title="Inicio", icon=":material/home:", default=True)
