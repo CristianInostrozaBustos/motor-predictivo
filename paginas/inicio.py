@@ -61,7 +61,7 @@ st.markdown(
     f"""
     <div class="portada">
       <div class="marca-portada"><span class="punto"></span>{E.NOMBRE_APP}</div>
-      <h1>Anticipa tu demanda.<br><b class="acento">Abastece con precisión.</b></h1>
+      <h1>Anticipa demanda.<br><b class="acento">Abastece con precisión.</b></h1>
       <p>Sube tu historial y obtén el pronóstico de cada producto, cuánto y cuándo pedir, y su impacto
       financiero.</p>
     </div>
