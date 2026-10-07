@@ -45,7 +45,8 @@ if "Estacionalidad" in elegidas:
         por_mes = serie.groupby(serie.index.month).mean()
         meses = [E.MESES_ES[m - 1][:3].capitalize() for m in por_mes.index]
         idx = por_mes / por_mes.mean() * 100
-        fig = go.Figure(go.Bar(x=meses, y=idx, marker=dict(color=[E.AZUL if v >= 100 else E.GRILLA for v in idx],
+        col_s = E.color_sku(sel)
+        fig = go.Figure(go.Bar(x=meses, y=idx, marker=dict(color=[col_s if v >= 100 else E.GRILLA for v in idx],
                                                                cornerradius=4),
                                hovertemplate="%{y:.0f} (100 = promedio)<extra></extra>"))
         fig.add_hline(y=100, line=dict(color=E.EJE, width=1))
@@ -57,7 +58,7 @@ if "Estacionalidad" in elegidas:
             por_dia = serie.groupby(serie.index.dayofweek).mean()
             idx = por_dia / por_dia.mean() * 100
             fig = go.Figure(go.Bar(x=[dias[i] for i in por_dia.index], y=idx,
-                                   marker=dict(color=[E.AZUL if v >= 100 else E.GRILLA for v in idx], cornerradius=4),
+                                   marker=dict(color=[col_s if v >= 100 else E.GRILLA for v in idx], cornerradius=4),
                                    hovertemplate="%{y:.0f}<extra></extra>"))
             fig.add_hline(y=100, line=dict(color=E.EJE, width=1))
             fig.update_layout(title="Índice por día de la semana", height=320, hovermode="closest")
@@ -81,11 +82,11 @@ if "Ranking ABC" in elegidas:
     abc["acumulado"] = abc["participacion"].cumsum()
     abc["clase"] = np.where(abc["acumulado"] - abc["participacion"] < 80, "A",
                             np.where(abc["acumulado"] - abc["participacion"] < 95, "B", "C"))
-    color_clase = {"A": E.AZUL, "B": E.AQUA, "C": E.GRILLA}
     with st.container(border=True):
         top = abc.head(30)
         fig = go.Figure(go.Bar(x=top.index.astype(str), y=top["participacion"],
-                               marker=dict(color=[color_clase[c] for c in top["clase"]], cornerradius=4),
+                               marker=dict(color=[E.color_sku(e) for e in top.index], cornerradius=4),
+                               text=top["clase"], textposition="outside", textfont=dict(color=E.TINTA_2, size=11),
                                customdata=top["clase"], hovertemplate="%{y:.1f}% · clase %{customdata}<extra></extra>"))
         fig.add_trace(go.Scatter(x=top.index.astype(str), y=top["acumulado"], mode="lines+markers", name="Acumulado",
                                  line=dict(color=E.TINTA, width=1.5), marker=dict(size=6), hovertemplate="%{y:.1f}%<extra></extra>"))
@@ -108,7 +109,8 @@ if "Efecto de las promociones" in elegidas:
     with c2.container(border=True):
         g = g.sort_values("efecto")
         fig = go.Figure(go.Bar(y=g.index.astype(str), x=g["efecto"], orientation="h",
-                               marker=dict(color=E.AZUL, cornerradius=4), hovertemplate="%{x:+.1f}%<extra></extra>"))
+                               marker=dict(color=[E.color_sku(e) for e in g.index], cornerradius=4),
+                               hovertemplate="%{x:+.1f}%<extra></extra>"))
         fig.update_layout(title=f"Aumento de {obj} en promoción por {S.nombre_entidad(dp)}", xaxis_ticksuffix="%",
                           height=max(240, 34 * len(g) + 90), hovermode="closest")
         E.grafico(fig, key="fig_promo")
@@ -123,7 +125,8 @@ if "Quiebres de stock" in elegidas:
     with c2.container(border=True):
         tasa = tasa.sort_values()
         fig = go.Figure(go.Bar(y=tasa.index.astype(str), x=tasa.values, orientation="h",
-                               marker=dict(color=E.ROJO, cornerradius=4), hovertemplate="%{x:.1f}%<extra></extra>"))
+                               marker=dict(color=[E.color_sku(e) for e in tasa.index], cornerradius=4),
+                               hovertemplate="%{x:.1f}%<extra></extra>"))
         fig.update_layout(title=f"Tasa de quiebre por {S.nombre_entidad(dp)}", xaxis_ticksuffix="%",
                           height=max(240, 34 * len(tasa) + 90), hovermode="closest")
         E.grafico(fig, key="fig_quiebre")
@@ -135,7 +138,8 @@ if "Variabilidad" in elegidas:
     with st.container(border=True):
         fig = go.Figure(go.Scatter(x=v["mean"], y=v["cv"], mode="markers+text" if len(v) <= 15 else "markers",
                                    text=v.index.astype(str), textposition="top center",
-                                   marker=dict(size=11, color=E.AZUL, line=dict(color="white", width=1.5)),
+                                   marker=dict(size=11, color=[E.color_sku(e) for e in v.index],
+                                               line=dict(color="white", width=1.5)),
                                    hovertemplate="%{text}<br>promedio %{x:,.0f} · CV %{y:.2f}<extra></extra>"))
         fig.update_layout(title="Volumen vs. variabilidad (más arriba = más difícil de pronosticar)",
                           xaxis_title=f"{obj} promedio por {fi['unidad']}", yaxis_title="Coeficiente de variación",

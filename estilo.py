@@ -37,9 +37,20 @@ MESES_ES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio",
             "agosto", "septiembre", "octubre", "noviembre", "diciembre"]
 
 
-def color_sku(sku, skus):
-    """El color sigue al producto, no a su posición en un filtro."""
-    return SERIES[sorted(skus).index(sku) % len(SERIES)]
+def color_sku(sku, skus=None):
+    """El color sigue al producto, no a su posición en un filtro: se asigna sobre el catálogo completo cargado."""
+    dp = st.session_state.get("dp")
+    if dp is not None:
+        clave = id(dp)
+        cache = st.session_state.get("_colores_sku")
+        if not cache or cache[0] != clave:
+            cache = (clave, {str(e): i for i, e in enumerate(sorted(map(str, dp.df["entidad"].unique())))})
+            st.session_state["_colores_sku"] = cache
+        i = cache[1].get(str(sku))
+        if i is not None:
+            return SERIES[i % len(SERIES)]
+    lista = sorted(map(str, skus)) if skus is not None else [str(sku)]
+    return SERIES[lista.index(str(sku)) % len(SERIES)] if str(sku) in lista else SERIES[0]
 
 
 def rgba(color_hex, alfa):

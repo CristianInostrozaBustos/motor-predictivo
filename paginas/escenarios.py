@@ -352,7 +352,7 @@ def sombrear(fig):
 
 if vista_pag == "Demanda":
     fig = E.fig_banda(c.escenario["fecha"], c.escenario["P10"], c.escenario["P50"], c.escenario["P90"],
-                      nombre_banda="Rango con el evento", nombre_p50="Con el evento")
+                      nombre_banda="Rango con el evento", nombre_p50="Con el evento", color=E.color_sku(ent))
     fig.add_trace(go.Scatter(x=c.base["fecha"], y=c.base["P50"], name="Sin el evento", mode="lines",
                              line=dict(color=E.TINTA_MUTED, width=1.6, dash="dot"), hovertemplate="%{y:,.0f}"))
     precio_ent = S.precio(ent)

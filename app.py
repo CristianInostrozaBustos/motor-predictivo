@@ -6,6 +6,7 @@ import sesion as S
 
 st.set_page_config(page_title="Motor Predictivo", page_icon="favicon.png", layout="wide", initial_sidebar_state="auto")
 E.aplicar_estilo()
+cuenta.verificar_sesion()
 
 inicio = st.Page("paginas/inicio.py", title="Inicio", icon=":material/home:", default=True)
 p_datos = st.Page("paginas/datos.py", title="1. Datos")

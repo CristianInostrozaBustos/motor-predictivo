@@ -207,22 +207,18 @@ if vista == "Resumen":
         with a2:
             cob = sorted(((e, de) for e, de in con_inv if de.cobertura_dias is not None),
                          key=lambda x: x[1].cobertura_dias)[:12]
-            fig = go.Figure()
-            for estado, color in COLOR_ESTADO.items():
-                grupo = [(e, de) for e, de in cob if de.estado == estado]
-                if grupo:
-                    fig.add_trace(go.Bar(y=[str(e) for e, _ in grupo], x=[de.cobertura_dias for _, de in grupo],
-                                         orientation="h", name=ESTADOS[estado][2:], marker_color=color,
-                                         hovertemplate="%{x:,.0f} días<extra></extra>"))
-            fig.update_layout(title=f"Te alcanza para (días) por {S.nombre_entidad(dp)}", hovermode="closest",
-                              barmode="stack", yaxis=dict(categoryorder="total descending"))
+            fig = go.Figure(go.Bar(y=[str(e) for e, _ in cob][::-1], x=[de.cobertura_dias for _, de in cob][::-1],
+                                   orientation="h", marker_color=[E.color_sku(e) for e, _ in cob][::-1],
+                                   customdata=[ESTADOS[de.estado][2:] for _, de in cob][::-1],
+                                   hovertemplate="%{x:,.0f} días · %{customdata}<extra></extra>"))
+            fig.update_layout(title=f"Te alcanza para (días) por {S.nombre_entidad(dp)}", hovermode="closest")
             E.grafico(fig, key="tab_cob", alto=300, ir_a=("decisiones", "Inventario proyectado"), eje_entidad="y")
         b1, b2 = st.columns(2, gap="medium")
         with b1:
             ped = sorted(((e, de) for e, de in con_inv if de.fecha_pedido is not None),
                          key=lambda x: x[1].fecha_pedido)[:12]
             fig = go.Figure(go.Bar(y=[str(e) for e, _ in ped][::-1], x=[de.cantidad for _, de in ped][::-1],
-                                   orientation="h", marker_color=[COLOR_ESTADO[de.estado] for _, de in ped][::-1],
+                                   orientation="h", marker_color=[E.color_sku(e) for e, _ in ped][::-1],
                                    customdata=[de.fecha_pedido.strftime("%d/%m/%Y") for _, de in ped][::-1],
                                    hovertemplate="%{x:,.0f} u. el %{customdata}<extra></extra>"))
             fig.update_layout(title="Próximos pedidos (u.) · por fecha", hovermode="closest")

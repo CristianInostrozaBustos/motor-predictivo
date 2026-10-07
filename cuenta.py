@@ -6,7 +6,12 @@
   Nunca lo configures en el sitio publicado.
 """
 
+import time
+
 import streamlit as st
+
+INACTIVIDAD_MIN = 30      # sin usar el sitio por más de esto, hay que volver a iniciar sesión
+MAXIMO_HORAS = 8          # duración máxima de una sesión desde que se inició
 
 
 def _secreto(seccion):
@@ -54,11 +59,68 @@ def iniciar_sesion():
         st.rerun()
 
 
-def cerrar_sesion():
+@st.cache_resource(show_spinner=False)
+def _ultima_actividad():
+    """Última vez que cada usuario usó el sitio (memoria del servidor, compartida entre pestañas)."""
+    return {}
+
+
+def _limpiar_estado():
     for k in ("_sesion_simulada", "registro", "resultado", "dp", "df_raw", "nombre_dataset", "archivo_bytes",
               "politica", "escenario", "vivo_estado", "clave_nueva", "link_origen", "_auto_hecho", "_auto_fallo",
-              "_auto_error", "trabajo"):
+              "_auto_error", "trabajo", "_sesion_validada"):
         st.session_state.pop(k, None)
+
+
+def sesion_vencida(ahora, iat, ultima, validada):
+    """¿Hay que pedir login de nuevo? iat: inicio de la sesión en Google; ultima: último uso registrado;
+    validada: esta pestaña ya pasó la revisión."""
+    inactivo = ultima is not None and ahora - ultima > INACTIVIDAD_MIN * 60
+    if iat is not None and ahora - iat > MAXIMO_HORAS * 3600:
+        return True
+    if validada:
+        return inactivo
+    # pestaña nueva: vale si se usó hace poco o si el login acaba de ocurrir
+    recien = iat is not None and ahora - iat < 180
+    sin_rastro = ultima is None and iat is not None
+    return not recien and (inactivo or sin_rastro)
+
+
+def verificar_sesion():
+    """Cierra la sesión de Google por inactividad o al superar la duración máxima.
+    La cookie de Streamlit dura 30 días; esto la acota."""
+    if usuario_simulado() or not login_google_disponible():
+        return
+    try:
+        if not st.user.is_logged_in:
+            return
+        correo = (st.user.get("email") or "").lower()
+        iat = st.user.get("iat")
+    except Exception:  # noqa: BLE001
+        return
+    try:
+        iat = float(iat)
+    except (TypeError, ValueError):
+        iat = None
+    ahora = time.time()
+    registro = _ultima_actividad()
+    vencida = sesion_vencida(ahora, iat, registro.get(correo), bool(st.session_state.get("_sesion_validada")))
+    if vencida:
+        registro.pop(correo, None)
+        _limpiar_estado()
+        st.logout()
+        st.stop()
+    registro[correo] = ahora
+    st.session_state["_sesion_validada"] = True
+
+
+def cerrar_sesion():
+    try:
+        correo = (st.user.get("email") or "").lower() if login_google_disponible() else ""
+    except Exception:  # noqa: BLE001
+        correo = ""
+    _ultima_actividad().pop(correo, None)
+    _limpiar_estado()
     if login_google_disponible() and not usuario_simulado():
         st.logout()
     st.rerun()
