@@ -1,5 +1,6 @@
 """Identidad visual del sitio: colores, CSS, plantilla de gráficos y componentes."""
 
+import html as _html
 import io
 import numpy as np
 import pandas as pd
@@ -307,6 +308,18 @@ section[data-testid="stSidebar"] [data-testid="stVerticalBlock"] { gap: 0.35rem;
 [class*="st-key-tarjeta_"] [data-testid="stElementContainer"]:has([data-testid="stMarkdown"]) { height: auto !important; }
 [data-testid="stVerticalBlock"]:has(> [data-testid="stLayoutWrapper"] > [class*="st-key-tarjeta_"]) {
     border: none !important; background: transparent !important; padding: 0 !important; box-shadow: none !important; }
+[class*="st-key-cab_"] { flex-wrap: nowrap !important; }
+[class*="st-key-cab_"] > div:first-child { min-width: 0; flex: 1 1 auto; }
+[class*="st-key-cab_"] [data-testid="stButton"] button { padding: 2px 6px !important; min-height: 0 !important; }
+[class*="st-key-tarjeta_ir_"] { cursor: pointer; transition: border-color .15s, box-shadow .15s; }
+[class*="st-key-tarjeta_ir_"]:hover { border-color: rgba(42,120,214,0.45);
+    box-shadow: 0 1px 3px rgba(11,11,11,0.06), 0 8px 22px rgba(42,120,214,0.12); }
+[class*="st-key-tarjeta_ir_"] .nsewdrag, [class*="st-key-tarjeta_ir_"] .bars path { cursor: pointer !important; }
+.kpis { display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 6px 2px 12px 2px; }
+.kpis .kpi { display: flex; align-items: baseline; gap: 6px; font-size: .82rem; color: #6b6a66; }
+.kpis .kpi b { color: #12305e; font-weight: 700; font-size: .92rem; }
+.kpis .kpi small { color: #8a8984; font-size: .75rem; }
+.kpis .kpi[title] { cursor: help; }
 .info-pie { font-size: .8rem; color: #8a8984; margin: 2px 0 10px 2px; }
 [data-testid="stPopoverBody"] { max-height: 60vh; overflow-y: auto; }
 .chip-texto { display: inline-block; font-size: .85rem; color: #6b6a66; padding: 6px 4px; white-space: nowrap; }
@@ -456,8 +469,18 @@ def _marcar_puntos(fig):
             t.marker.line = dict(color="#ffffff", width=1.5)
 
 
-def grafico(fig, key=None, alto=None, icono=None):
-    """Cada gráfico va en su tarjeta: título con ícono arriba a la izquierda y la figura debajo."""
+def _ir_a_vista(pagina, vista, entidad=None):
+    if entidad is not None:
+        st.session_state["entidad"] = entidad
+        st.session_state["vista_sel"] = [entidad]
+    st.session_state[f"vista_{pagina}"] = vista
+    st.rerun()
+
+
+def grafico(fig, key=None, alto=None, icono=None, ir_a=None, eje_entidad=None):
+    """Cada gráfico va en su tarjeta: título con ícono arriba a la izquierda y la figura debajo.
+    ir_a=(página, vista): al pinchar el gráfico (o la flecha del título) se abre esa vista; con eje_entidad
+    ("x" o "y") la barra pinchada además elige ese producto."""
     if alto:
         fig.update_layout(height=alto)
     rango = _fechas_en_x(fig)
@@ -469,10 +492,47 @@ def grafico(fig, key=None, alto=None, icono=None):
     hay_leyenda = sum(1 for t in fig.data if t.showlegend is not False and t.name) > 1 or bool(fig.layout.showlegend)
     fig.update_layout(title_text=None, margin=dict(t=34 if hay_leyenda else 10), paper_bgcolor="#ffffff",
                       plot_bgcolor="#ffffff")
-    with st.container(key=f"tarjeta_{key or id(fig)}"):
-        if titulo:
-            st.markdown(f":material/{icono or _icono_figura(fig)}: " + titulo.replace("$", "\\$"))
-        st.plotly_chart(fig, width="stretch", key=key, config={"displaylogo": False, "locale": "es"})
+    clave = key or str(id(fig))
+    with st.container(key=f"tarjeta_{'ir_' if ir_a else ''}{clave}"):
+        if titulo or ir_a:
+            with st.container(horizontal=True, vertical_alignment="center", gap="small", key=f"cab_{clave}"):
+                st.markdown(f":material/{icono or _icono_figura(fig)}: " + (titulo or "").replace("$", "\\$"),
+                            width="stretch")
+                if ir_a and st.button("", icon=":material/arrow_forward:", type="tertiary", key=f"ir_{clave}",
+                                      help="Ver el detalle"):
+                    _ir_a_vista(*ir_a)
+        if ir_a:
+            ev = st.plotly_chart(fig, width="stretch", key=key, on_select="rerun", selection_mode="points",
+                                 config={"displaylogo": False, "locale": "es"})
+            puntos = (ev.selection.points if ev and ev.selection else None) or []
+            if puntos:
+                ent = puntos[0].get(eje_entidad) if eje_entidad else None
+                _ir_a_vista(*ir_a, entidad=ent)
+        else:
+            st.plotly_chart(fig, width="stretch", key=key, config={"displaylogo": False, "locale": "es"})
+
+
+class Kpis:
+    """Junta indicadores con la misma firma de st.metric y los muestra después, en una franja discreta bajo los
+    gráficos (son informativos: no van sobre los controles)."""
+
+    def __init__(self):
+        self.items = []
+
+    def metric(self, label, value, delta=None, help=None, **_):
+        self.items.append((label, value, delta, help))
+
+    def mostrar(self):
+        if not self.items:
+            return
+        partes = []
+        for label, value, delta, ayuda in self.items:
+            tip = f' title="{_html.escape(str(ayuda))}"' if ayuda else ""
+            extra = f"<small>{_html.escape(str(delta))}</small>" if delta else ""
+            partes.append(f'<div class="kpi"{tip}><span>{_html.escape(str(label))}</span>'
+                          f'<b>{_html.escape(str(value))}</b>{extra}</div>')
+        st.markdown('<div class="kpis">' + "".join(partes) + "</div>", unsafe_allow_html=True)
+        self.items = []
 
 
 def excel_bytes(hojas):

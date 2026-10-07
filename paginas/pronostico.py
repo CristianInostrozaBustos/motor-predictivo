@@ -54,7 +54,8 @@ if vista == "Prueba con datos pasados":
                  "M": "el mismo mes del año anterior", "Q": "el mismo trimestre del año anterior"}[dp.config.frecuencia]
     m = met.loc[prueba] if prueba in met.index else None
     if m is not None:
-        c1, c2, c3 = st.columns(3)
+        kp_bt = E.Kpis()
+        c1 = c2 = c3 = kp_bt
         c1.metric("Error promedio", E.pct(m["wape"]),
                   help="Suma de los errores absolutos dividida por la demanda real total (WAPE).")
         c2.metric("Aciertos dentro del rango", E.pct(m["cobertura"]))
@@ -73,6 +74,8 @@ if vista == "Prueba con datos pasados":
     fig.update_layout(title=f"Pronóstico vs. realidad · {prueba} · últimos {res.plan.validacion} {fi['unidad_pl']}",
                       height=440)
     E.grafico(fig, key="fig_bt")
+    if m is not None:
+        kp_bt.mostrar()
     st.caption(f"Se escondieron los últimos {res.plan.validacion} {fi['unidad_pl']} del historial, el modelo los "
                "pronosticó sin verlos y aquí se compara con lo que realmente pasó. La línea punteada naranja es la "
                f"referencia sin modelo: repetir {temporada} conocida antes de la prueba. Si la línea azul queda "
@@ -88,7 +91,8 @@ elif vista == "Resumen":
     precio_e = S.precio(ent)
     ingresos = float((f_e["P50"] * S.factor_inflacion(f_e["fecha"])).sum()) * precio_e if precio_e else 0
 
-    k1, k2, k3, k4 = st.columns(4)
+    kp = E.Kpis()
+    k1 = k2 = k3 = k4 = kp
     k1.metric(f"Demanda esperada ({H} {fi['unidad_pl']})", E.num(total))
     k2.metric(f"Vs. últimos {H} {fi['unidad_pl']}", E.pct((total - previo) / previo * 100) if previo > 0 else "—")
     if ingresos:
@@ -111,7 +115,7 @@ elif vista == "Resumen":
         fig.add_trace(go.Scatter(x=fechas_f, y=f_e["P50"], name="Pronóstico", mode="lines",
                                  line=dict(color=E.AZUL, width=2.4), hovertemplate="%{y:,.0f}"))
         fig.update_layout(title=f"{obj} · {ent}")
-        E.grafico(fig, key="tab_total", alto=300)
+        E.grafico(fig, key="tab_total", alto=300, ir_a=("pronostico", "Pronóstico"))
     with a2:
         if len(entidades) > 1:
             tot = pd.Series({e: float(fut[e]["P50"].sum()) for e in entidades}).sort_values().tail(12)
@@ -123,7 +127,8 @@ elif vista == "Resumen":
         else:
             fig = go.Figure(go.Bar(x=fechas_f, y=f_e["P50"], marker_color=E.AZUL, hovertemplate="%{y:,.0f}<extra></extra>"))
             fig.update_layout(title=f"Demanda esperada por {fi['unidad']}")
-        E.grafico(fig, key="tab_por_ent", alto=300)
+        E.grafico(fig, key="tab_por_ent", alto=300, ir_a=("pronostico", "Pronóstico"),
+                  eje_entidad="y" if len(entidades) > 1 else None)
     b1, b2 = st.columns(2, gap="medium")
     with b1:
         bt = res.backtest.get(ent)
@@ -134,7 +139,7 @@ elif vista == "Resumen":
             fig.add_trace(go.Scatter(x=bt["fecha"], y=bt["P50"], name="Lo que pronosticó", mode="lines",
                                      line=dict(color=E.AZUL, width=2), hovertemplate="%{y:,.0f}"))
         fig.update_layout(title=f"Prueba con datos pasados · {ent}")
-        E.grafico(fig, key="tab_bt", alto=300, icono="fact_check")
+        E.grafico(fig, key="tab_bt", alto=300, icono="fact_check", ir_a=("pronostico", "Prueba con datos pasados"))
     with b2:
         m = met.sort_values("wape", ascending=False).tail(12)
         fig = go.Figure()
@@ -142,9 +147,10 @@ elif vista == "Resumen":
                              marker_color=E.GRILLA, hovertemplate="%{x:.1f}%<extra>sin modelo</extra>"))
         fig.add_trace(go.Bar(y=m.index.astype(str), x=m["wape"], name="Con el modelo", orientation="h",
                              marker_color=E.AZUL, hovertemplate="%{x:.1f}%<extra>con el modelo</extra>"))
-        fig.update_layout(title="Error al pronosticar el pasado (menos es mejor)", xaxis_ticksuffix="%",
+        fig.update_layout(title="Error del modelo vs. sin modelo", xaxis_ticksuffix="%",
                           barmode="group", hovermode="closest", legend_traceorder="reversed")
-        E.grafico(fig, key="tab_error", alto=300, icono="target")
+        E.grafico(fig, key="tab_error", alto=300, icono="target", ir_a=("pronostico", "Precisión"))
+    kp.mostrar()
 else:
     sel = S.selector_vista(entidades, dp, key="pron", fila=FILA.get("fila"))
     ver = list(sel)

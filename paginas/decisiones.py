@@ -185,7 +185,8 @@ COLOR_ESTADO = {"Riesgo de quiebre": E.ROJO, "Pedir ahora": E.NARANJO, "Stock su
                 "Sin inventario": E.EJE}
 if vista == "Resumen":
     cuenta_est = pd.Series([de.estado for de in decs.values()]).value_counts()
-    k1, k2, k3, k4 = st.columns(4)
+    kp = E.Kpis()
+    k1 = k2 = k3 = k4 = kp
     for col, (estado, etiqueta) in zip((k1, k2, k3, k4), [("Riesgo de quiebre", "Riesgo de quiebre"),
                                                           ("Pedir ahora", "Pedir ahora"),
                                                           ("Stock suficiente", "Stock suficiente"),
@@ -198,7 +199,7 @@ if vista == "Resumen":
             fig.update_layout(title=f"Inventario proyectado · {ent}", yaxis_title=None,
                               legend=dict(orientation="h", y=1.02, yanchor="bottom", x=0.5, xanchor="center",
                                           font=dict(size=10)))
-            E.grafico(fig, key="tab_inv", alto=300, icono="inventory_2")
+            E.grafico(fig, key="tab_inv", alto=300, icono="inventory_2", ir_a=("decisiones", "Inventario proyectado"))
         else:
             E.nota(f"Ingresa el inventario actual{de_ent_html} en <b>Inventario</b> (arriba) para ver su proyección.")
     with a2:
@@ -213,7 +214,8 @@ if vista == "Resumen":
                                      hovertemplate="%{x:,.0f} días<extra></extra>"))
         fig.update_layout(title=f"Te alcanza para (días) por {S.nombre_entidad(dp)}", hovermode="closest",
                           barmode="stack", yaxis=dict(categoryorder="total descending"))
-        E.grafico(fig, key="tab_cob", alto=300, icono="schedule")
+        E.grafico(fig, key="tab_cob", alto=300, icono="schedule", ir_a=("decisiones", "Inventario proyectado"),
+                  eje_entidad="y")
     b1, b2 = st.columns(2, gap="medium")
     with b1:
         ped = sorted(((e, de) for e, de in decs.items() if de.fecha_pedido is not None and de.estado != "Sin inventario"),
@@ -223,7 +225,8 @@ if vista == "Resumen":
                                customdata=[de.fecha_pedido.strftime("%d/%m/%Y") for _, de in ped][::-1],
                                hovertemplate="%{x:,.0f} u. el %{customdata}<extra></extra>"))
         fig.update_layout(title="Próximos pedidos (u.) · por fecha", hovermode="closest")
-        E.grafico(fig, key="tab_ped", alto=300, icono="local_shipping")
+        E.grafico(fig, key="tab_ped", alto=300, icono="local_shipping", ir_a=("decisiones", "Inventario proyectado"),
+                  eje_entidad="y")
     with b2:
         con_inv = [(e, de) for e, de in decs.items() if de.inventario is not None][:12]
         fig = go.Figure()
@@ -235,7 +238,9 @@ if vista == "Resumen":
                              name="Inventario", marker_color=E.AZUL, hovertemplate="%{x:,.0f} u.<extra>inventario</extra>"))
         fig.update_layout(title="Inventario vs. punto de reorden", barmode="group", hovermode="closest",
                           legend_traceorder="reversed")
-        E.grafico(fig, key="tab_rop", alto=300, icono="stacked_bar_chart")
+        E.grafico(fig, key="tab_rop", alto=300, icono="stacked_bar_chart",
+                  ir_a=("decisiones", "Todos los productos" if len(decs) > 1 else "Inventario proyectado"))
+    kp.mostrar()
     S.panel_dataset(compacto=True)
     st.stop()
 
@@ -257,7 +262,8 @@ sim_tuyo, ev = None, None
 cc_ent = S.costo_compra(ent)
 
 if vista in ("Inventario proyectado", "Detalle técnico"):
-    m1, m2, m3, m4 = st.columns(4)
+    kp = E.Kpis()
+    m1 = m2 = m3 = m4 = kp
     m1.metric("Inventario actual", f"{E.num(d.inventario)} u.",
               help=(f"Capital: {E.clp_md(d.inventario * cc_ent)}" if cc_ent else None))
     if d.fecha_pedido is None:
@@ -277,9 +283,11 @@ if vista in ("Inventario proyectado", "Detalle técnico"):
     else:
         E.nota(f"🟢 <b>No necesitas pedir.</b> El inventario alcanza para los {E.num(len(pr) * dias_p)} días analizados.")
     if vista == "Detalle técnico":
+        kp.mostrar()
         detalle_tecnico()
     else:
         E.grafico(fig_automatico(sim_sug), key="fig_inv")
+        kp.mostrar()
         st.caption("Cuando la bodega toca el punto de reorden (ROP) se pide. Mientras llega, baja hasta cerca del stock "
                    "de seguridad (SS); al llegar, sube hasta la meta (T).")
 else:
@@ -320,7 +328,8 @@ else:
     parecido = abs(dif_q) <= max(0.01 * ev["compra_sug"], 1.0) and ev["perdida_extra"] <= 0
     dias_sin = max(0, ev["quiebres_tuyo"] - ev["quiebres_sug"]) * dias_p
     al_final = ev["ultimo_quiebre"] is not None and ev["ultimo_quiebre"] >= pr["fecha"].iloc[-1]
-    k1, k2, k3, k4 = st.columns(4)
+    kp = E.Kpis()
+    k1 = k2 = k3 = k4 = kp
     k1.metric("Tu compra", f"{E.num(q)} u.", delta=f"sugerido {E.num(q0)} u.", delta_color="off", delta_arrow="off")
     if costo:
         ahorro = ev["ahorro_caja"]
@@ -354,6 +363,7 @@ else:
         E.nota(f"🔴 <b>Ojo:</b> {ahorro_txt}te quedas sin stock {'al menos ' if al_final else ''}{E.num(dias_sin)} días "
                f"y pierdes <b>{perdida_txt}</b>.{vuelta}")
     E.grafico(fig_comparar(sim_sug, sim_tuyo), key="fig_tuyo")
+    kp.mostrar()
 
 exp = tabla.copy()
 exp["Estado"] = exp["Estado"].str[2:]

@@ -295,8 +295,9 @@ else:
 c = comps[ent]
 r = c.resumen
 d0, d1 = r["demanda_base_evento"], r["demanda_esc_evento"]
+kp = E.Kpis()
 if vista_pag != "Impacto en dinero":
-    m1, m2, m3, m4 = st.columns(4)
+    m1 = m2 = m3 = m4 = kp
     var_d = (d1 / d0 - 1) * 100 if d0 else 0
     m1.metric("Demanda durante el evento", E.num(d1), delta=f"{E.pct(var_d)} vs. sin evento" if abs(var_d) >= 0.05 else None,
               delta_color="off")
@@ -368,6 +369,7 @@ if vista_pag == "Demanda":
     fig.update_layout(title=f"Demanda pronosticada · {ent}", yaxis_title=dp.etiquetas["objetivo"], height=460,
                       margin=dict(t=110))
     E.grafico(fig, key="fig_esc_dem")
+    kp.mostrar()
     ev_precio = [ev for ev in esc.eventos if ev.tipo == "precio"]
     otros_modelo = [ev for ev in esc.eventos if ev.tipo in ("promocion", "exogena")]
     if ev_precio and ev_precio[0].elasticidad is None and len(esc.eventos) == 1 and d0:
@@ -408,6 +410,7 @@ if vista_pag == "Inventario" and hay_inv:
     fig.update_layout(title=f"Inventario proyectado · {ent}", yaxis_title="Unidades", height=460,
                       margin=dict(t=110))
     E.grafico(fig, key="fig_esc_inv")
+    kp.mostrar()
     st.caption("Simulación con venta perdida: cuando el inventario llega a cero, la demanda de ese día no se atiende.")
 elif vista_pag == "Inventario":
     with st.container(border=True):
@@ -419,6 +422,7 @@ elif vista_pag == "Inventario":
         })
         st.dataframe(t, hide_index=True, width="stretch",
                      column_config={k: st.column_config.NumberColumn(format="%.0f") for k in ("Actual", "Con el evento")})
+    kp.mostrar()
 
 if vista_pag == "Inventario" and len(afectadas) > 1:
     st.markdown(f"#### {S.mayus(S.todos_entidad(dp))} afectad{'as' if S.es_femenino(dp) else 'os'}")
@@ -465,7 +469,7 @@ if vista_pag == "Impacto en dinero" and S.precio(ent):
         hay_costo = "margen" in d.columns
         cp = esc.cambio_precio()
 
-        k1, k2, k3, k4 = st.columns(4)
+        k1 = k2 = k3 = k4 = kp
         k1.metric("Precio de venta en el evento", E.clp(sa["precio_evento"]),
                   delta=f"antes {E.clp_md(precio_ent)}" if abs(cp) > 1e-9 else "sin cambio",
                   delta_color="off", delta_arrow="off")
@@ -530,6 +534,7 @@ if vista_pag == "Impacto en dinero" and S.precio(ent):
         for k in legible.columns[1:]:
             legible[k] = legible[k].map(E.num if k == "Unidades vendidas" else E.clp)
         st.dataframe(legible, hide_index=True, width="stretch")
+        kp.mostrar()
         st.caption(f"Sobre los {H_an} {u_pl} analizados, con el último precio"
                    + (" y costo" if hay_costo else "") + f" de tu archivo para {ent}. "
                    "Ventas perdidas = unidades sin stock × precio. "

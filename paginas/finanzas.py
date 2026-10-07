@@ -169,6 +169,7 @@ def patron_semana_mes(ver):
 
 
 def tablero(ent):
+    vista_fuerte = "Días fuertes" if dp.config.frecuencia == "D" else "Meses fuertes"
     con_precio = [e for e in entidades if S.precio(e)]
     infl = {e: S.factor_inflacion(fut[e]["fecha"]) for e in entidades}
     ing = {e: float((fut[e]["P50"].to_numpy() * infl[e]).sum()) * S.precio(e) for e in con_precio}
@@ -180,7 +181,8 @@ def tablero(ent):
     previo = float(hist[hist["fecha"] > hist["fecha"].max() - pd.Timedelta(days=H * dias_p)]["monto"].sum())
     ing_e, marg_e = ing.get(ent), marg.get(ent)
 
-    k1, k2, k3, k4 = st.columns(4)
+    kp = E.Kpis()
+    k1 = k2 = k3 = k4 = kp
     k1.metric(f"Ventas esperadas ({H} {fi['unidad_pl']})", f"{E.num(unid)} u.")
     k2.metric("Ingresos esperados", E.clp_corto(ing_e) if ing_e else "—",
               help=None if ing_e else "Asigna su precio en Precio y costo para ver montos.")
@@ -197,7 +199,7 @@ def tablero(ent):
         fig = go.Figure(go.Bar(x=f["fecha"], y=y / div, marker_color=E.AZUL, hovertemplate=hov + "<extra></extra>"))
         fig.update_layout(title=("Ingresos" if en_pesos else "Ventas") + f" esperados por {fi['unidad']} · {ent}",
                           yaxis_title=eje, hovermode="closest")
-        E.grafico(fig, key="tab_fin_periodo", alto=300, icono="payments")
+        E.grafico(fig, key="tab_fin_periodo", alto=300, icono="payments", ir_a=("finanzas", "Meta e ingresos"))
     with a2:
         base = ing if ing else {e: float(fut[e]["P50"].sum()) for e in entidades}
         serie = pd.Series(base).sort_values().tail(12)
@@ -207,7 +209,8 @@ def tablero(ent):
                                hovertemplate=hov.replace("{y", "{x") + "<extra></extra>"))
         fig.update_layout(title=("Ingresos" if ing else "Ventas") + f" esperados por {S.nombre_entidad(dp)}",
                           xaxis_title=eje, hovermode="closest")
-        E.grafico(fig, key="tab_fin_ent", alto=300, icono="leaderboard")
+        E.grafico(fig, key="tab_fin_ent", alto=300, icono="leaderboard",
+                  ir_a=("finanzas", "Comparar productos" if len(entidades) > 1 else "Meta e ingresos"), eje_entidad="y")
     b1, b2 = st.columns(2, gap="medium")
     with b1:
         en_p = bool(ing_e)
@@ -218,7 +221,7 @@ def tablero(ent):
         fig = go.Figure(go.Scatter(x=mensual.index, y=mensual.values / div, mode="lines", name="Historial",
                                    line=dict(color=E.AZUL, width=2), hovertemplate=hov))
         fig.update_layout(title=("Ingresos" if en_p else "Ventas") + f" por mes (historial) · {ent}", yaxis_title=eje)
-        E.grafico(fig, key="tab_fin_mes", alto=300, icono="calendar_month")
+        E.grafico(fig, key="tab_fin_mes", alto=300, icono="calendar_month", ir_a=("finanzas", vista_fuerte))
     with b2:
         pt = patron_semana_mes([ent])
         if pt is None:
@@ -230,7 +233,8 @@ def tablero(ent):
                                    hovertemplate="%{y:+.1f}%<extra></extra>"))
             fig.update_layout(title=f"Ventas por {que.split()[0]} vs. el promedio · {ent}", yaxis_ticksuffix="%",
                               hovermode="closest")
-            E.grafico(fig, key="tab_fin_patron", alto=300, icono="date_range")
+            E.grafico(fig, key="tab_fin_patron", alto=300, icono="date_range", ir_a=("finanzas", vista_fuerte))
+    kp.mostrar()
     if ing_e:
         S.info_pie([S.nota_inflacion()])
 
@@ -260,7 +264,7 @@ else:
         return serie.to_numpy() * (precios[e] or 0.0) * infl[e][:len(serie)]
 
     if vista == "Meta e ingresos":
-        tarjetas = st.container()
+        tarjetas = E.Kpis()
         unid = sum(fut[e]["P50"].sum() for e in ver)
         ingresos = {q: sum(monto(e, fut[e][q]).sum() for e in con_precio) for q in ("P10", "P50", "P90")}
         margen = sum(float((fut[e]["P50"].to_numpy() * infl[e]).sum()) * (precios[e] - costos[e])
@@ -268,7 +272,7 @@ else:
         hay_margen = any(costos[e] for e in con_precio)
         dias_total = H * dias_p
 
-        c1, c2, c3, c4 = tarjetas.columns(4)
+        c1 = c2 = c3 = c4 = tarjetas
         c1.metric(f"Ventas esperadas ({H} {fi['unidad_pl']})", f"{E.num(unid)} u.")
         if en_pesos:
             c2.metric("Ingresos esperados", E.clp_corto(ingresos["P50"]), help=f"{E.clp_md(ingresos['P50'])}")
@@ -382,6 +386,7 @@ else:
             fig.update_layout(title=("Ingresos acumulados" if en_pesos else "Ventas acumuladas") + f" vs. tu meta · {nombre_vista}",
                               yaxis_title=eje_y, height=400)
             E.grafico(fig, key="fig_meta")
+            tarjetas.mostrar()
             st.caption(("Sin precio de venta: la meta va en unidades. " if not en_pesos else "")
                        + "La probabilidad usa el error real del modelo en la prueba con datos pasados."
                        + (" " + S.nota_inflacion() if en_pesos else ""))
