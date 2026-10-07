@@ -5,8 +5,6 @@ import streamlit as st
 import cuenta
 import estilo as E
 import sesion as S
-from motor import almacen as A
-from motor import repositorio as Rp
 from motor.datos import FRECUENCIAS
 
 S.panel_dataset()
@@ -105,17 +103,17 @@ for reg in lista:
                         st.session_state["registro"]["nombre"] = nuevo.strip()
                     st.rerun()
             with b3.popover("Borrar", width="stretch"):
-                st.caption("Se borra el pronóstico, su archivo de datos y sus escenarios. No se puede deshacer.")
+                st.caption("Se borra el pronóstico, su archivo de datos, sus escenarios y su modelo entrenado. "
+                           "No se puede deshacer.")
                 if st.button("Sí, borrar", key=f"del_{reg['id']}", type="primary"):
-                    repo.borrar(u["correo"], reg["id"])
-                    try:
-                        S.almacen_vivo().borrar_todo(u["correo"], reg["id"])
-                    except Exception:  # noqa: BLE001
-                        pass
-                    try:
-                        S.almacen_persistente().borrar(A.ruta_datos(Rp.id_usuario(u["correo"]), reg["id"]))
-                    except Exception:  # noqa: BLE001
-                        pass
-                    if reg["id"] == activo:
-                        st.session_state.pop("registro", None)
+                    S.borrar_analisis(reg, con_modelo=True)
                     st.rerun()
+
+with st.container(horizontal=True, horizontal_alignment="right"):
+    with st.popover("Borrar todos mis análisis", icon=":material/delete_sweep:", type="tertiary"):
+        st.caption(f"Se borran tus {len(lista)} análisis con sus datos, escenarios y modelos entrenados. "
+                   "No se puede deshacer.")
+        if st.button("Sí, borrar todo", type="primary", key="borrar_todo"):
+            for reg in lista:
+                S.borrar_analisis(reg, con_modelo=True)
+            st.rerun()
