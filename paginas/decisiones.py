@@ -197,49 +197,87 @@ if vista == "Resumen":
         if d.inventario is not None:
             fig = fig_automatico(P.simular(pr, d))
             fig.update_layout(title=f"Inventario proyectado · {ent}", yaxis_title=None,
-                              legend=dict(orientation="h", y=1.02, yanchor="bottom", x=0.5, xanchor="center",
+                              legend=dict(orientation="h", y=1.02, yanchor="bottom", x=0, xanchor="left",
                                           font=dict(size=10)))
             E.grafico(fig, key="tab_inv", alto=300, icono="inventory_2", ir_a=("decisiones", "Inventario proyectado"))
         else:
             E.nota(f"Ingresa el inventario actual{de_ent_html} en <b>Inventario</b> (arriba) para ver su proyección.")
-    with a2:
-        cob = sorted(((e, de) for e, de in decs.items() if de.cobertura_dias is not None),
-                     key=lambda x: x[1].cobertura_dias)[:12]
-        fig = go.Figure()
-        for estado, color in COLOR_ESTADO.items():
-            grupo = [(e, de) for e, de in cob if de.estado == estado]
-            if grupo:
-                fig.add_trace(go.Bar(y=[str(e) for e, _ in grupo], x=[de.cobertura_dias for _, de in grupo],
-                                     orientation="h", name=ESTADOS[estado][2:], marker_color=color,
-                                     hovertemplate="%{x:,.0f} días<extra></extra>"))
-        fig.update_layout(title=f"Te alcanza para (días) por {S.nombre_entidad(dp)}", hovermode="closest",
-                          barmode="stack", yaxis=dict(categoryorder="total descending"))
-        E.grafico(fig, key="tab_cob", alto=300, icono="schedule", ir_a=("decisiones", "Inventario proyectado"),
-                  eje_entidad="y")
-    b1, b2 = st.columns(2, gap="medium")
-    with b1:
-        ped = sorted(((e, de) for e, de in decs.items() if de.fecha_pedido is not None and de.estado != "Sin inventario"),
-                     key=lambda x: x[1].fecha_pedido)[:12]
-        fig = go.Figure(go.Bar(y=[str(e) for e, _ in ped][::-1], x=[de.cantidad for _, de in ped][::-1],
-                               orientation="h", marker_color=[COLOR_ESTADO[de.estado] for _, de in ped][::-1],
-                               customdata=[de.fecha_pedido.strftime("%d/%m/%Y") for _, de in ped][::-1],
-                               hovertemplate="%{x:,.0f} u. el %{customdata}<extra></extra>"))
-        fig.update_layout(title="Próximos pedidos (u.) · por fecha", hovermode="closest")
-        E.grafico(fig, key="tab_ped", alto=300, icono="local_shipping", ir_a=("decisiones", "Inventario proyectado"),
-                  eje_entidad="y")
-    with b2:
-        con_inv = [(e, de) for e, de in decs.items() if de.inventario is not None][:12]
-        fig = go.Figure()
-        nombres = [str(e) for e, _ in con_inv][::-1]
-        fig.add_trace(go.Bar(y=nombres, x=[de.rop for _, de in con_inv][::-1], orientation="h",
-                             name="Punto de reorden", marker_color=E.NARANJO,
-                             hovertemplate="%{x:,.0f} u.<extra>punto de reorden</extra>"))
-        fig.add_trace(go.Bar(y=nombres, x=[de.inventario for _, de in con_inv][::-1], orientation="h",
-                             name="Inventario", marker_color=E.AZUL, hovertemplate="%{x:,.0f} u.<extra>inventario</extra>"))
-        fig.update_layout(title="Inventario vs. punto de reorden", barmode="group", hovermode="closest",
-                          legend_traceorder="reversed")
-        E.grafico(fig, key="tab_rop", alto=300, icono="stacked_bar_chart",
-                  ir_a=("decisiones", "Todos los productos" if len(decs) > 1 else "Inventario proyectado"))
+    con_inv = [(e, de) for e, de in decs.items() if de.inventario is not None]
+    if len(con_inv) >= 2:
+        with a2:
+            cob = sorted(((e, de) for e, de in con_inv if de.cobertura_dias is not None),
+                         key=lambda x: x[1].cobertura_dias)[:12]
+            fig = go.Figure()
+            for estado, color in COLOR_ESTADO.items():
+                grupo = [(e, de) for e, de in cob if de.estado == estado]
+                if grupo:
+                    fig.add_trace(go.Bar(y=[str(e) for e, _ in grupo], x=[de.cobertura_dias for _, de in grupo],
+                                         orientation="h", name=ESTADOS[estado][2:], marker_color=color,
+                                         hovertemplate="%{x:,.0f} días<extra></extra>"))
+            fig.update_layout(title=f"Te alcanza para (días) por {S.nombre_entidad(dp)}", hovermode="closest",
+                              barmode="stack", yaxis=dict(categoryorder="total descending"))
+            E.grafico(fig, key="tab_cob", alto=300, ir_a=("decisiones", "Inventario proyectado"), eje_entidad="y")
+        b1, b2 = st.columns(2, gap="medium")
+        with b1:
+            ped = sorted(((e, de) for e, de in con_inv if de.fecha_pedido is not None),
+                         key=lambda x: x[1].fecha_pedido)[:12]
+            fig = go.Figure(go.Bar(y=[str(e) for e, _ in ped][::-1], x=[de.cantidad for _, de in ped][::-1],
+                                   orientation="h", marker_color=[COLOR_ESTADO[de.estado] for _, de in ped][::-1],
+                                   customdata=[de.fecha_pedido.strftime("%d/%m/%Y") for _, de in ped][::-1],
+                                   hovertemplate="%{x:,.0f} u. el %{customdata}<extra></extra>"))
+            fig.update_layout(title="Próximos pedidos (u.) · por fecha", hovermode="closest")
+            E.grafico(fig, key="tab_ped", alto=300, ir_a=("decisiones", "Inventario proyectado"), eje_entidad="y")
+        with b2:
+            fig = go.Figure()
+            nombres = [str(e) for e, _ in con_inv[:12]][::-1]
+            fig.add_trace(go.Bar(y=nombres, x=[de.rop for _, de in con_inv[:12]][::-1], orientation="h",
+                                 name="Punto de reorden", marker_color=E.NARANJO,
+                                 hovertemplate="%{x:,.0f} u.<extra>punto de reorden</extra>"))
+            fig.add_trace(go.Bar(y=nombres, x=[de.inventario for _, de in con_inv[:12]][::-1], orientation="h",
+                                 name="Inventario", marker_color=E.AZUL,
+                                 hovertemplate="%{x:,.0f} u.<extra>inventario</extra>"))
+            fig.update_layout(title="Inventario vs. punto de reorden", barmode="group", hovermode="closest",
+                              legend_traceorder="reversed")
+            E.grafico(fig, key="tab_rop", alto=300, ir_a=("decisiones", "Todos los productos"))
+    else:
+        # con un solo SKU con inventario, las comparaciones entre SKUs no dicen nada: se muestra ese SKU en detalle
+        col_e = E.color_sku(ent, entidades)
+        with a2:
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(x=pd.concat([pr["fecha"], pr["fecha"][::-1]]),
+                                     y=pd.concat([pr["P90"], pr["P10"][::-1]]), fill="toself",
+                                     fillcolor=E.rgba(col_e, 0.16), line=dict(width=0), hoverinfo="skip",
+                                     name="Rango probable"))
+            fig.add_trace(go.Scatter(x=pr["fecha"], y=pr["P50"], name="Demanda esperada", mode="lines",
+                                     line=dict(color=col_e, width=2.2), hovertemplate="%{y:,.0f} u."))
+            fig.update_layout(title=f"Demanda a cubrir · {ent}")
+            E.grafico(fig, key="tab_dem", alto=300, ir_a=("pronostico", "Pronóstico"))
+        b1, b2 = st.columns(2, gap="medium")
+        with b1:
+            if d.inventario is not None:
+                sim_r = P.simular(pr, d)
+                ped_r = sim_r[sim_r["pedido"] > 0]
+                fig = go.Figure(go.Bar(x=ped_r["fecha"], y=ped_r["pedido"], marker_color=col_e, width=86400000 * 3,
+                                       hovertemplate="%{y:,.0f} u.<extra></extra>"))
+                fig.update_layout(title=f"Pedidos sugeridos · {ent}", hovermode="closest")
+                E.grafico(fig, key="tab_ped1", alto=300, ir_a=("decisiones", "Inventario proyectado"))
+            else:
+                E.nota(f"Ingresa el inventario{de_ent_html} en <b>Inventario</b> (arriba) para ver los pedidos sugeridos.")
+        with b2:
+            niveles = list(P.Z_NIVEL)
+            ss_n = []
+            for nv in niveles:
+                par_n = P.Parametros(lead_time_dias=param[ent]["lt"], revision_dias=float(revision), nivel_servicio=nv,
+                                     inventario_actual=None, errores=S.errores_modelo(ent))
+                ss_n.append(P.decidir(ent, pr, dp.config.frecuencia, par_n).ss)
+            fig = go.Figure(go.Bar(x=niveles, y=ss_n, marker_color=[col_e if nv == nivel else E.GRILLA for nv in niveles],
+                                   hovertemplate="%{y:,.0f} u.<extra></extra>"))
+            fig.update_layout(title=f"Stock de seguridad por nivel de servicio · {ent}", hovermode="closest",
+                              xaxis=dict(type="category", showspikes=False))
+            E.grafico(fig, key="tab_ss", alto=300, ir_a=("decisiones", "Detalle técnico"))
+        if len(entidades) > 1:
+            S.info_pie([f"Solo {len(con_inv)} de {len(entidades)} {S.nombre_entidad(dp, True)} tienen inventario: "
+                        "ingresa el de los demás para compararlos"])
     kp.mostrar()
     S.panel_dataset(compacto=True)
     st.stop()
