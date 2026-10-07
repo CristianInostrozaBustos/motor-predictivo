@@ -31,11 +31,10 @@ def bloque_horizonte(dp, plan, extra=None):
         err = S.guardar_pronostico_actual()
         if err:
             st.session_state.setdefault("avisos_almacen", []).append(err)
-        chips = [f"Desde <b>{inicio:%d/%m/%Y}</b>"]
+        info = [f"Pronóstico desde el {inicio:%d/%m/%Y}"]
         if not S.registro_actual() and cuenta.login_disponible() and not cuenta.usuario():
-            chips.append("Modo abierto: inicia sesión para guardarlo")
-        fila.markdown('<div class="resumen-chips" style="margin:0">' + "".join(f"<span>{c}</span>" for c in chips)
-                      + "</div>", unsafe_allow_html=True, width="content")
+            info.append("Modo abierto: inicia sesión para guardarlo")
+        st.session_state["_info_pronostico"] = info
         if extra:
             extra(fila)
         for aviso in st.session_state.pop("avisos_almacen", []):

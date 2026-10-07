@@ -28,9 +28,12 @@ problemas = not det.roles.get("fecha") or not det.roles.get("objetivo")
 roles = {}
 
 
+PRESET = st.session_state.get("_datos_preset") == k     # columnas puestas al abrir un análisis guardado
+
+
 def _ini(clave, valor, neutro):
-    """Valor inicial del widget; si la clave ya viene de un análisis guardado, se usa el neutro (evita el aviso)."""
-    return neutro if clave in st.session_state else valor
+    """Valor inicial estable entre corridas; si las columnas vienen de un análisis guardado, el neutro."""
+    return neutro if PRESET and clave in st.session_state else valor
 
 
 with st.expander("Revisar columnas detectadas", icon=":material/view_column:", expanded=problemas):
@@ -134,11 +137,6 @@ f0, f1 = dp.df["fecha"].min(), dp.df["fecha"].max()
 datos_fr = {"diaria": "diarios", "semanal": "semanales", "mensual": "mensuales",
             "trimestral": "trimestrales"}.get(fi["nombre"], fi["nombre"])
 fila = S.fila_chips("datos")
-fila.markdown(
-    f'<div class="resumen-chips" style="margin:0"><span><b>{E.num(n_ent)}</b> {S.nombre_entidad(dp, n_ent != 1)}</span>'
-    f'<span>Historial <b>{f0:%m/%Y} – {f1:%m/%Y}</b></span>'
-    f'<span title="Frecuencia detectada en tu archivo">Datos <b>{datos_fr}</b></span></div>',
-    unsafe_allow_html=True, width="content")
 
 with st.container(border=True):
     todas = sorted(dp.df["entidad"].unique())
@@ -157,6 +155,8 @@ with st.container(border=True):
     fig.update_layout(title=f"{dp.etiquetas['objetivo']} por {fi['unidad']} · {S.titulo_seleccion(sel, dp)}",
                       height=380, showlegend=True)
     E.grafico(fig, key="fig_total")
+    S.info_pie([f"{E.num(n_ent)} {S.nombre_entidad(dp, n_ent != 1)}", f"historial {f0:%m/%Y} – {f1:%m/%Y}",
+                f"datos {datos_fr}"])
     if len(dp.picos):
         n_e = dp.picos["entidad"].nunique()
         st.caption(f":material/troubleshoot: Se detectaron {len(dp.picos)} picos aislados en {n_e} "

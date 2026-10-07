@@ -40,14 +40,14 @@ def chip_inflacion(fila):
     with S.chip(fila, f"Inflación: {inf['corta']}", "fin_inflacion",
                 icono=":material/warning:" if inf["aviso"] else None):
         modos = {"pais": "Según el país", "propio": "Valor propio", "sin": "Sin ajuste"}
-        st.selectbox("Ajuste", list(modos), index=list(modos).index(c["modo"]), format_func=modos.get, key="inf_modo")
+        st.radio("Ajuste", list(modos), index=list(modos).index(c["modo"]), format_func=modos.get, key="inf_modo")
         if c["modo"] == "pais":
             paises = list(I.PAISES)
-            st.selectbox("País", paises, index=paises.index(c["pais"]) if c["pais"] in paises else 0,
+            st.radio("País", paises, index=paises.index(c["pais"]) if c["pais"] in paises else 0,
                          format_func=I.PAISES.get, key="inf_pais")
             if c["pais"] == "CHL":
                 fuentes = {"ipc12": "IPC últimos 12 meses", "fmi": "Proyección del FMI"}
-                st.selectbox("Fuente", list(fuentes), index=list(fuentes).index(c["fuente"]) if c["fuente"] in fuentes
+                st.radio("Fuente", list(fuentes), index=list(fuentes).index(c["fuente"]) if c["fuente"] in fuentes
                              else 0, format_func=fuentes.get, key="inf_fuente")
         elif c["modo"] == "propio":
             st.number_input("Inflación anual (%)", -20.0, 500.0, float(c["pct"]), 0.1, format="%.1f", key="inf_pct")
@@ -262,8 +262,6 @@ else:
             meta = st.number_input(f"Meta para los próximos {H} {fi['unidad_pl']} " + ("($)" if en_pesos else "(u.)"),
                                    0.0, None, meta_def, float(paso), format="%.0f", key=k_meta)
             st.caption(f"Por defecto: lo que vendiste {ref_txt} ({fmt_md(anterior)}).")
-        if not en_pesos:
-            S.chip_texto(fila, f"Sin precio: la meta va en unidades")
         prob = 0.5 * (1 - math.erf((meta - mu_total) / (sd_total * math.sqrt(2)))) if sd_total > 0 else float(mu_total >= meta)
         por_dia_meta, por_dia_pron = meta / H, mu_total / H
         color = "🟢" if prob >= 0.7 else ("🟠" if prob >= 0.4 else "🔴")
@@ -295,7 +293,8 @@ else:
             fig.update_layout(title=("Ingresos acumulados" if en_pesos else "Ventas acumuladas") + f" vs. tu meta · {nombre_vista}",
                               yaxis_title=eje_y, height=400)
             E.grafico(fig, key="fig_meta")
-            st.caption("La probabilidad usa el error real del modelo en la prueba con datos pasados."
+            st.caption(("Sin precio de venta: la meta va en unidades. " if not en_pesos else "")
+                       + "La probabilidad usa el error real del modelo en la prueba con datos pasados."
                        + (" " + S.nota_inflacion() if en_pesos else ""))
     else:
         hist = dp.df[dp.df["entidad"].isin(ver)].groupby("fecha")["objetivo"].sum()

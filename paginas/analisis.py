@@ -27,8 +27,6 @@ if not dp.tiene("promocion"):
     no_disp.append("efecto de promociones (requiere columna de promoción)")
 if not (dp.tiene("quiebre") or dp.tiene("inventario")):
     no_disp.append("quiebres de stock (requiere inventario o quiebre)")
-if no_disp:
-    st.caption(":material/info: Con más columnas también verías: " + "; ".join(no_disp) + ".")
 
 ents = sorted(df["entidad"].unique())
 
@@ -143,3 +141,6 @@ if "Variabilidad" in elegidas:
                           xaxis_title=f"{obj} promedio por {fi['unidad']}", yaxis_title="Coeficiente de variación",
                           height=400, hovermode="closest")
         E.grafico(fig, key="fig_cv")
+
+if no_disp:
+    S.info_pie(["Con más columnas también verías: " + "; ".join(no_disp)])

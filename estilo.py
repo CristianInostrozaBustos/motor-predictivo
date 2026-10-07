@@ -283,6 +283,15 @@ section[data-testid="stSidebar"] [data-testid="stVerticalBlock"] { gap: 0.35rem;
 [class*="st-key-fila_"] [data-testid="stButton"] button p { font-size: .85rem; }
 [class*="st-key-fila_"] [data-testid="stMarkdownContainer"], [class*="st-key-fila_"] [data-testid="stMarkdownContainer"] p { margin: 0; }
 [class*="st-key-fila_"] [data-testid="stElementContainer"]:has(.chip-texto) { width: auto !important; }
+/* selección múltiple con el mismo aspecto de la lista de puntos (radio) */
+[class*="st-key-_pm_"] label > span + div { width: 1rem !important; height: 1rem !important; min-width: 1rem;
+    border-radius: 50% !important; border: none !important; background: #e6e8ec !important; }
+[class*="st-key-_pm_"] label > span + div svg { display: none; }
+[class*="st-key-_pm_"] label:has(input:checked) > span + div {
+    background: radial-gradient(circle, #ffffff 0 0.19rem, #1c5cab 0.21rem) !important; }
+[class*="st-key-puntos_"] { gap: 0.35rem !important; }
+.info-pie { font-size: .8rem; color: #8a8984; margin: 2px 0 10px 2px; }
+[data-testid="stPopoverBody"] { max-height: 60vh; overflow-y: auto; }
 .chip-texto { display: inline-block; font-size: .85rem; color: #6b6a66; padding: 6px 4px; white-space: nowrap; }
 .chip-texto.aviso { color: #b45309; }
 

@@ -583,6 +583,40 @@ def _sync_vista(clave_widget):
         st.session_state["entidad"] = ahora[0]
 
 
+def _activa_ultima(antes, ahora):
+    nuevos = [e for e in ahora if e not in antes]
+    if nuevos:
+        st.session_state["entidad"] = nuevos[-1]
+    elif ahora and st.session_state.get("entidad") not in ahora:
+        st.session_state["entidad"] = ahora[0]
+
+
+def _sync_puntos(opciones, estado, key, al_cambiar):
+    antes = list(st.session_state.get(estado) or [])
+    ahora = [o for i, o in enumerate(opciones) if st.session_state.get(f"_pm_{key}_{i}")]
+    st.session_state[estado] = ahora
+    if al_cambiar:
+        al_cambiar(antes, ahora)
+
+
+def puntos_multi(opciones, estado, key, formato=None, maximo=None, al_cambiar=None):
+    """Selección múltiple con el mismo aspecto de la lista de puntos: cada punto se marca o desmarca solo.
+    La elección queda en session_state[estado] (lista)."""
+    opciones = list(opciones)
+    fmt = formato or str
+    sel = [o for o in (st.session_state.get(estado) or []) if o in opciones]
+    st.session_state[estado] = sel
+    with st.container(key=f"puntos_{key}", gap=None):
+        for i, o in enumerate(opciones):
+            kw = f"_pm_{key}_{i}"
+            st.session_state[kw] = o in sel
+            st.checkbox(fmt(o), key=kw, on_change=_sync_puntos, args=(opciones, estado, key, al_cambiar),
+                        disabled=maximo is not None and len(sel) >= maximo and o not in sel)
+    if maximo is not None and len(opciones) > maximo:
+        st.caption(f"Hasta {maximo} a la vez.")
+    return st.session_state[estado]
+
+
 def selector_vista(entidades, dp, key, fila=None):
     """Selección de uno o varios productos (se superponen en los gráficos). Devuelve una lista; la elección se
     comparte entre páginas. Con `fila`, va como etiqueta compacta."""
@@ -599,17 +633,15 @@ def selector_vista(entidades, dp, key, fila=None):
     kw_sel = f"_vs_{key}"
     st.session_state[kw_sel] = previa
     etiqueta = f"{mayus(nombre_entidad(dp))}"
-    caja = chip(fila, f"{etiqueta}: {titulo_seleccion(previa, dp)}", f"vista_{key}") if fila is not None else None
-    with caja if caja is not None else st.container():
-        if len(entidades) <= MAX_BOTONES:
-            st.pills(etiqueta, entidades, selection_mode="multi", key=kw_sel, on_change=_sync_vista, args=(kw_sel,),
-                     label_visibility="collapsed" if caja is not None else "visible")
-        else:
-            st.multiselect(etiqueta, entidades, key=kw_sel, max_selections=MAX_SERIES, on_change=_sync_vista,
-                           args=(kw_sel,), placeholder=f"Elige hasta {MAX_SERIES}",
-                           label_visibility="collapsed" if caja is not None else "visible")
-        if caja is not None:
-            st.caption("Elige uno o varios para compararlos en el gráfico.")
+    if fila is not None:
+        with chip(fila, f"{etiqueta}: {titulo_seleccion(previa, dp)}", f"vista_{key}"):
+            puntos_multi(entidades, "vista_sel", key=f"vs_{key}", maximo=MAX_SERIES, al_cambiar=_activa_ultima)
+        st.session_state[kw_sel] = st.session_state["vista_sel"]
+    elif len(entidades) <= MAX_BOTONES:
+        st.pills(etiqueta, entidades, selection_mode="multi", key=kw_sel, on_change=_sync_vista, args=(kw_sel,))
+    else:
+        st.multiselect(etiqueta, entidades, key=kw_sel, max_selections=MAX_SERIES, on_change=_sync_vista,
+                       args=(kw_sel,), placeholder=f"Elige hasta {MAX_SERIES}")
     elegidas = [e for e in entidades if e in (st.session_state.get(kw_sel) or [])]
     if not elegidas:
         st.caption(f":material/info: Elige al menos {un_entidad(dp)}. Mientras tanto se muestra el primero.")
@@ -639,6 +671,13 @@ def chip(fila, etiqueta, key, icono=None):
         return st.popover(etiqueta, icon=icono, width="content")
 
 
+def info_pie(textos):
+    """Datos informativos (no cambian el gráfico): una línea discreta bajo los gráficos."""
+    textos = [t for t in textos if t]
+    if textos:
+        st.markdown('<div class="info-pie">' + " · ".join(textos) + "</div>", unsafe_allow_html=True)
+
+
 def chip_texto(fila, texto, aviso=False):
     fila.markdown(f'<span class="chip-texto{" aviso" if aviso else ""}">{texto}</span>', unsafe_allow_html=True)
 
@@ -657,17 +696,14 @@ def chip_opcion(contenedor, prefijo, opciones, estado, key, icono=None, formato=
             st.session_state[estado] = st.session_state[kw]
 
     with chip(contenedor, f"{prefijo}{fmt(st.session_state[estado])}", key, icono):
-        nombre = prefijo.strip(": ") or "Opción"
-        if len(opciones) > 8:
-            st.selectbox(nombre, opciones, key=kw, on_change=_sync, format_func=fmt, label_visibility="collapsed")
-        else:
-            st.radio(nombre, opciones, key=kw, on_change=_sync, format_func=fmt, label_visibility="collapsed")
+        st.radio(prefijo.strip(": ") or "Opción", opciones, key=kw, on_change=_sync, format_func=fmt,
+                 label_visibility="collapsed")
     return st.session_state[estado]
 
 
 def elegir_uno(etiqueta, opciones, key, estado, defecto=None, formato=None):
-    """Selector de UNA opción con el mismo estilo en todo el sitio: botones (pills) si caben,
-    lista desplegable si hay muchas. `estado` es la clave de session_state donde se recuerda la elección."""
+    """Selector de UNA opción como lista de puntos (estándar del sitio). `estado` es la clave de session_state
+    donde se recuerda la elección."""
     opciones = list(opciones)
     if st.session_state.get(estado) not in opciones:
         st.session_state[estado] = defecto if defecto in opciones else opciones[0]
@@ -684,12 +720,7 @@ def elegir_uno(etiqueta, opciones, key, estado, defecto=None, formato=None):
     kwargs = dict(key=kw, on_change=_sync_uno)
     if formato:
         kwargs["format_func"] = formato
-    if len(opciones) <= MAX_BOTONES:
-        st.pills(etiqueta, opciones, selection_mode="single", **kwargs)
-    else:
-        c1, _ = st.columns([1, 2])
-        with c1:
-            st.selectbox(etiqueta, opciones, **kwargs)
+    st.radio(etiqueta, opciones, **kwargs)
     return st.session_state[estado]
 
 
@@ -853,6 +884,7 @@ def abrir_pronostico(reg, progreso=None):
         if campo in cfg:
             st.session_state[f"{llave}_{k}"] = cfg[campo]
     st.session_state[f"serie_{k}"] = cfg.get("nombre_serie") or ""
+    st.session_state["_datos_preset"] = k
 
     dp = preparar_cacheado(df, tuple(sorted(roles.items())), tuple(cfg.get("exogenas", [])), cfg.get("frecuencia", "D"),
                            cfg.get("relleno", "interpolar"), cfg.get("negativos", True),

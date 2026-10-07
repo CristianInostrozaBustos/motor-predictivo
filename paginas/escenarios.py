@@ -112,9 +112,10 @@ if alcance != "Todas":
         ss["vista_sel"] = [alcance]
 ss["_esc_activa"] = ss.get("entidad")
 
+if "esc_tipos_sel" not in ss:
+    ss["esc_tipos_sel"] = ["retraso"]
 with S.chip(fila, "Eventos", "esc_tipos", icono=":material/add:"):
-    tipos = st.pills("Eventos", disponibles, format_func=lambda t: X.TIPOS[t], selection_mode="multi",
-                     default=["retraso"], label_visibility="collapsed", key="esc_tipos")
+    tipos = S.puntos_multi(disponibles, "esc_tipos_sel", key="esc_tipos", formato=lambda t: X.TIPOS[t])
     st.caption("Puedes combinar varios.")
 eventos = []
 for t in tipos or []:
@@ -201,7 +202,8 @@ with fila.container(width="content"):
 if guardados:
     with S.chip(fila, "Guardados", "esc_guardados", icono=":material/bookmark:"):
         nombres = [g["nombre"] for g in guardados]
-        elegido = st.pills("Tus escenarios guardados", nombres, key="esc_guardado_sel")
+        elegido = st.radio("Tus escenarios guardados", nombres, index=None, key="esc_guardado_sel",
+                           label_visibility="collapsed")
         if elegido and st.session_state.get("_esc_cargado") != elegido:
             g = guardados[nombres.index(elegido)]
             st.session_state["escenario"] = dict(clave=S.clave_dataset(dp), desde=g["desde"], duracion=g["duracion"],
@@ -258,9 +260,8 @@ descripcion = " + ".join(
      "exogena": f"{dp.etiquetas.get(ev.var, ev.var)} {ev.valor:+.0%}"}[ev.tipo].replace(".", ",")
     for ev in esc.eventos)
 st.markdown(f"### Resultado · {descripcion}")
-st.caption(f"Del {f_ini:%d/%m/%Y} al {f_fin:%d/%m/%Y} · "
-           + (S.todos_entidad(dp) if len(afectadas) > 1 else afectadas[0])
-           + f" · análisis sobre {H_an} {u_pl} · nivel de servicio {nivel}")
+info_esc = [f"Del {f_ini:%d/%m/%Y} al {f_fin:%d/%m/%Y}", S.todos_entidad(dp) if len(afectadas) > 1 else afectadas[0],
+            f"análisis sobre {H_an} {u_pl}", f"nivel de servicio {nivel}"]
 
 if not hay_inv:
     E.nota("Para simular el inventario necesitas el inventario actual. Complétalo en el panel de "
@@ -549,6 +550,8 @@ if registro:
             st.toast(f"Escenario “{nuevo['nombre']}” guardado en Mis pronósticos.", icon=":material/bookmark_added:")
 elif cuenta.login_disponible() and not cuenta.usuario():
     st.caption(":material/lock_open: Inicia sesión para guardar tus escenarios y volver a ellos.")
+
+S.info_pie(info_esc)
 
 # ---------------------------------------------------------------- descarga
 hojas = {}

@@ -172,6 +172,8 @@ else:
                                       * 100).map(lambda v: E.pct(v)),
         }), width="stretch", hide_index=True)
 
+S.info_pie(st.session_state.get("_info_pronostico", []))
+
 # ---------------------------------------------------------------- descarga
 todo = pd.concat([f.assign(entidad=e) for e, f in fut.items()])
 todo = todo[["entidad", "fecha", "P50", "P10", "P90"]].rename(columns={

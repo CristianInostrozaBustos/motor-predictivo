@@ -231,12 +231,11 @@ else:
     clave_plan = f"{clave}_{ent}"
     costo = cc_ent
     fila2 = S.fila_chips("dec_compra")
-    S.chip_texto(fila2, "Tu compra:")
     por = ss.get("plan_por", "Unidades") if costo else "Unidades"
     k_q, k_m, k_f, k_l = (f"q_{clave_plan}", f"m_{clave_plan}", f"fecha_{clave_plan}", f"ltc_{clave_plan}")
     etiqueta_q = (f"{E.num(ss.get(k_q, float(round(q0))))} u." if por == "Unidades"
                   else E.clp_corto(ss.get(k_m, float(round(q0 * costo)))))
-    with S.chip(fila2, f"Cantidad: {etiqueta_q}", "dec_q"):
+    with S.chip(fila2, f"Compra: {etiqueta_q}", "dec_q"):
         if costo:
             por = S.elegir_uno("Defino la compra en", ["Unidades", "Pesos ($)"], key="por", estado="plan_por")
         if por == "Unidades":
@@ -245,7 +244,7 @@ else:
             monto = st.number_input("Monto a gastar ($)", 0.0, None, float(round(q0 * costo)), 10000.0, format="%.0f",
                                     key=k_m)
             q = float(np.floor(monto / costo))
-    with S.chip(fila2, f"Fecha: {ss.get(k_f, f0.date()):%d/%m/%Y}", "dec_fecha"):
+    with S.chip(fila2, f"Fecha de compra: {ss.get(k_f, f0.date()):%d/%m/%Y}", "dec_fecha"):
         fecha_c = st.date_input("Fecha de la compra", f0.date(), min_value=pr["fecha"].iloc[0].date(),
                                 max_value=pr["fecha"].iloc[-1].date(), format="DD/MM/YYYY", key=k_f)
     with S.chip(fila2, f"Llega en: {E.num(ss.get(k_l, float(round(d.L * dias_p, 1))), 1)} días", "dec_ltc"):
