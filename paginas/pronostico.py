@@ -29,7 +29,7 @@ FILA = {}
 
 def _chip_unidades(fila):
     FILA["fila"] = fila
-    if S.vista("pronostico") != "Precisión" and S.hay_precios():
+    if S.vista("pronostico") not in ("Precisión", "Resumen") and S.hay_precios():
         S.chip_opcion(fila, "Ver: ", [UNIDADES, DINERO], estado="ver_en", key="unid_pron")
 
 
@@ -77,6 +77,74 @@ if vista == "Prueba con datos pasados":
                "pronosticó sin verlos y aquí se compara con lo que realmente pasó. La línea punteada naranja es la "
                f"referencia sin modelo: repetir {temporada} conocida antes de la prueba. Si la línea azul queda "
                "más cerca de la negra que la naranja, el modelo aporta.")
+elif vista == "Resumen":
+    ent = S.selector_entidad([e for e in entidades if e in res.backtest] or entidades, dp, key="pron_res",
+                             fila=FILA.get("fila"))
+    freq = dp.config.frecuencia
+    hist_t = dp.df[dp.df["entidad"] == ent].set_index("fecha")["objetivo"]
+    f_e = fut[ent].reset_index(drop=True)
+    fechas_f = f_e["fecha"]
+    total, previo = float(f_e["P50"].sum()), float(hist_t.tail(H).sum())
+    precio_e = S.precio(ent)
+    ingresos = float((f_e["P50"] * S.factor_inflacion(f_e["fecha"])).sum()) * precio_e if precio_e else 0
+
+    k1, k2, k3, k4 = st.columns(4)
+    k1.metric(f"Demanda esperada ({H} {fi['unidad_pl']})", E.num(total))
+    k2.metric(f"Vs. últimos {H} {fi['unidad_pl']}", E.pct((total - previo) / previo * 100) if previo > 0 else "—")
+    if ingresos:
+        k3.metric("Ingresos esperados", E.clp_corto(ingresos))
+    else:
+        k3.metric(f"Promedio por {fi['unidad']}", E.num(total / max(H, 1)))
+    k4.metric("Error del modelo", E.pct(met.loc[ent, "wape"]) if ent in met.index else "—",
+              help="Qué tanto se equivocó el modelo al pronosticar datos pasados que no vio (WAPE).")
+
+    a1, a2 = st.columns(2, gap="medium")
+    with a1:
+        atras = min(len(hist_t), max(2 * H, {"D": 90, "W": 52, "M": 24, "Q": 12}[freq]))
+        h_ver = hist_t.tail(atras)
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(x=pd.concat([fechas_f, fechas_f[::-1]]), y=pd.concat([f_e["P90"], f_e["P10"][::-1]]),
+                                 fill="toself", fillcolor=E.AZUL_BANDA, line=dict(width=0), hoverinfo="skip",
+                                 name="Rango probable"))
+        fig.add_trace(go.Scatter(x=h_ver.index, y=h_ver.values, name="Historial", mode="lines",
+                                 line=dict(color=E.TINTA_MUTED, width=1.4), hovertemplate="%{y:,.0f}"))
+        fig.add_trace(go.Scatter(x=fechas_f, y=f_e["P50"], name="Pronóstico", mode="lines",
+                                 line=dict(color=E.AZUL, width=2.4), hovertemplate="%{y:,.0f}"))
+        fig.update_layout(title=f"{obj} · {ent}")
+        E.grafico(fig, key="tab_total", alto=300)
+    with a2:
+        if len(entidades) > 1:
+            tot = pd.Series({e: float(fut[e]["P50"].sum()) for e in entidades}).sort_values().tail(12)
+            fig = go.Figure(go.Bar(y=tot.index.astype(str), x=tot.values, orientation="h",
+                                   marker_color=[E.AZUL_OSCURO if e == ent else E.AZUL for e in tot.index],
+                                   hovertemplate="%{x:,.0f}<extra></extra>"))
+            fig.update_layout(title=f"Demanda esperada por {S.nombre_entidad(dp)} ({H} {fi['unidad_pl']})",
+                              hovermode="closest")
+        else:
+            fig = go.Figure(go.Bar(x=fechas_f, y=f_e["P50"], marker_color=E.AZUL, hovertemplate="%{y:,.0f}<extra></extra>"))
+            fig.update_layout(title=f"Demanda esperada por {fi['unidad']}")
+        E.grafico(fig, key="tab_por_ent", alto=300)
+    b1, b2 = st.columns(2, gap="medium")
+    with b1:
+        bt = res.backtest.get(ent)
+        fig = go.Figure()
+        if bt is not None:
+            fig.add_trace(go.Scatter(x=bt["fecha"], y=bt["real"], name="Lo que pasó", mode="lines",
+                                     line=dict(color=E.TINTA, width=1.6), hovertemplate="%{y:,.0f}"))
+            fig.add_trace(go.Scatter(x=bt["fecha"], y=bt["P50"], name="Lo que pronosticó", mode="lines",
+                                     line=dict(color=E.AZUL, width=2), hovertemplate="%{y:,.0f}"))
+        fig.update_layout(title=f"Prueba con datos pasados · {ent}")
+        E.grafico(fig, key="tab_bt", alto=300, icono="fact_check")
+    with b2:
+        m = met.sort_values("wape", ascending=False).tail(12)
+        fig = go.Figure()
+        fig.add_trace(go.Bar(y=m.index.astype(str), x=m["wape_naive"], name="Sin modelo", orientation="h",
+                             marker_color=E.GRILLA, hovertemplate="%{x:.1f}%<extra>sin modelo</extra>"))
+        fig.add_trace(go.Bar(y=m.index.astype(str), x=m["wape"], name="Con el modelo", orientation="h",
+                             marker_color=E.AZUL, hovertemplate="%{x:.1f}%<extra>con el modelo</extra>"))
+        fig.update_layout(title="Error al pronosticar el pasado (menos es mejor)", xaxis_ticksuffix="%",
+                          barmode="group", hovermode="closest", legend_traceorder="reversed")
+        E.grafico(fig, key="tab_error", alto=300, icono="target")
 else:
     sel = S.selector_vista(entidades, dp, key="pron", fila=FILA.get("fila"))
     ver = list(sel)

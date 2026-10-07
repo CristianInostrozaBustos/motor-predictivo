@@ -180,6 +180,65 @@ def detalle_tecnico():
             st.caption(":material/warning: " + d.aviso)
 
 
+# ---------------------------------------------------------------- tablero
+COLOR_ESTADO = {"Riesgo de quiebre": E.ROJO, "Pedir ahora": E.NARANJO, "Stock suficiente": E.AQUA,
+                "Sin inventario": E.EJE}
+if vista == "Resumen":
+    cuenta_est = pd.Series([de.estado for de in decs.values()]).value_counts()
+    k1, k2, k3, k4 = st.columns(4)
+    for col, (estado, etiqueta) in zip((k1, k2, k3, k4), [("Riesgo de quiebre", "Riesgo de quiebre"),
+                                                          ("Pedir ahora", "Pedir ahora"),
+                                                          ("Stock suficiente", "Stock suficiente"),
+                                                          ("Sin inventario", "Falta inventario")]):
+        col.metric(etiqueta, f"{int(cuenta_est.get(estado, 0))} de {len(decs)}")
+    a1, a2 = st.columns(2, gap="medium")
+    with a1:
+        if d.inventario is not None:
+            fig = fig_automatico(P.simular(pr, d))
+            fig.update_layout(title=f"Inventario proyectado · {ent}", yaxis_title=None,
+                              legend=dict(orientation="h", y=1.02, yanchor="bottom", x=0.5, xanchor="center",
+                                          font=dict(size=10)))
+            E.grafico(fig, key="tab_inv", alto=300, icono="inventory_2")
+        else:
+            E.nota(f"Ingresa el inventario actual{de_ent_html} en <b>Inventario</b> (arriba) para ver su proyección.")
+    with a2:
+        cob = sorted(((e, de) for e, de in decs.items() if de.cobertura_dias is not None),
+                     key=lambda x: x[1].cobertura_dias)[:12]
+        fig = go.Figure()
+        for estado, color in COLOR_ESTADO.items():
+            grupo = [(e, de) for e, de in cob if de.estado == estado]
+            if grupo:
+                fig.add_trace(go.Bar(y=[str(e) for e, _ in grupo], x=[de.cobertura_dias for _, de in grupo],
+                                     orientation="h", name=ESTADOS[estado][2:], marker_color=color,
+                                     hovertemplate="%{x:,.0f} días<extra></extra>"))
+        fig.update_layout(title=f"Te alcanza para (días) por {S.nombre_entidad(dp)}", hovermode="closest",
+                          barmode="stack", yaxis=dict(categoryorder="total descending"))
+        E.grafico(fig, key="tab_cob", alto=300, icono="schedule")
+    b1, b2 = st.columns(2, gap="medium")
+    with b1:
+        ped = sorted(((e, de) for e, de in decs.items() if de.fecha_pedido is not None and de.estado != "Sin inventario"),
+                     key=lambda x: x[1].fecha_pedido)[:12]
+        fig = go.Figure(go.Bar(y=[str(e) for e, _ in ped][::-1], x=[de.cantidad for _, de in ped][::-1],
+                               orientation="h", marker_color=[COLOR_ESTADO[de.estado] for _, de in ped][::-1],
+                               customdata=[de.fecha_pedido.strftime("%d/%m/%Y") for _, de in ped][::-1],
+                               hovertemplate="%{x:,.0f} u. el %{customdata}<extra></extra>"))
+        fig.update_layout(title="Próximos pedidos (u.) · por fecha", hovermode="closest")
+        E.grafico(fig, key="tab_ped", alto=300, icono="local_shipping")
+    with b2:
+        con_inv = [(e, de) for e, de in decs.items() if de.inventario is not None][:12]
+        fig = go.Figure()
+        nombres = [str(e) for e, _ in con_inv][::-1]
+        fig.add_trace(go.Bar(y=nombres, x=[de.rop for _, de in con_inv][::-1], orientation="h",
+                             name="Punto de reorden", marker_color=E.NARANJO,
+                             hovertemplate="%{x:,.0f} u.<extra>punto de reorden</extra>"))
+        fig.add_trace(go.Bar(y=nombres, x=[de.inventario for _, de in con_inv][::-1], orientation="h",
+                             name="Inventario", marker_color=E.AZUL, hovertemplate="%{x:,.0f} u.<extra>inventario</extra>"))
+        fig.update_layout(title="Inventario vs. punto de reorden", barmode="group", hovermode="closest",
+                          legend_traceorder="reversed")
+        E.grafico(fig, key="tab_rop", alto=300, icono="stacked_bar_chart")
+    S.panel_dataset(compacto=True)
+    st.stop()
+
 # ---------------------------------------------------------------- visualización
 if vista == "Todos los productos":
     tabla_skus()

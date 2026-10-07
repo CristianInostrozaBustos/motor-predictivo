@@ -224,9 +224,9 @@ def pronostico_escenario(h, cambios, entidades):
 
 # ---------------------------------------------------------------- vistas por página (menú lateral)
 VISTAS = {
-    "pronostico": ["Pronóstico", "Tabla", "Precisión", "Prueba con datos pasados"],
-    "decisiones": ["Inventario proyectado", "Tú decides", "Todos los productos", "Detalle técnico"],
-    "finanzas": ["Meta e ingresos", "Comparar productos", "Días fuertes", "Insumos", "Precio y costo"],
+    "pronostico": ["Resumen", "Pronóstico", "Tabla", "Precisión", "Prueba con datos pasados"],
+    "decisiones": ["Resumen", "Inventario proyectado", "Tú decides", "Todos los productos", "Detalle técnico"],
+    "finanzas": ["Resumen", "Meta e ingresos", "Comparar productos", "Días fuertes", "Insumos", "Precio y costo"],
     "escenarios": ["Demanda", "Inventario", "Impacto en dinero"],
 }
 

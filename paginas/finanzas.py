@@ -148,10 +148,99 @@ def insumos(ent):
             st.caption(f":material/info: Ningún insumo de la tabla aplica a {ent}.")
 
 
+def patron_semana_mes(ver):
+    """Promedio por día de la semana (datos diarios) o por mes, relativo al promedio. None si falta historial."""
+    hist = dp.df[dp.df["entidad"].isin(ver)].groupby("fecha")["objetivo"].sum()
+    hist = hist[hist.index >= hist.index.max() - pd.Timedelta(days=730)]
+    if dp.config.frecuencia == "D" and len(hist) >= 28:
+        patron = hist.groupby(hist.index.dayofweek).mean()
+        etiquetas = ["lun", "mar", "mié", "jue", "vie", "sáb", "dom"]
+        nombres = [etiquetas[i] for i in patron.index]
+        que = "día de la semana"
+    elif dp.config.frecuencia in ("W", "M") and hist.index.month.nunique() == 12:
+        patron = hist.groupby(hist.index.month).mean()
+        nombres = [E.MESES_ES[m - 1][:3] for m in patron.index]
+        que = "mes"
+    else:
+        return None
+    if patron.mean() <= 0:
+        return None
+    return nombres, (patron / patron.mean() - 1) * 100, que
+
+
+def tablero(ent):
+    con_precio = [e for e in entidades if S.precio(e)]
+    infl = {e: S.factor_inflacion(fut[e]["fecha"]) for e in entidades}
+    ing = {e: float((fut[e]["P50"].to_numpy() * infl[e]).sum()) * S.precio(e) for e in con_precio}
+    marg = {e: float((fut[e]["P50"].to_numpy() * infl[e]).sum()) * (S.precio(e) - S.costo(e))
+            for e in con_precio if S.costo(e)}
+    unid = float(fut[ent]["P50"].sum())
+    hist = dp.df[dp.df["entidad"] == ent].copy()
+    hist["monto"] = hist["objetivo"] * (S.precio(ent) or 0)
+    previo = float(hist[hist["fecha"] > hist["fecha"].max() - pd.Timedelta(days=H * dias_p)]["monto"].sum())
+    ing_e, marg_e = ing.get(ent), marg.get(ent)
+
+    k1, k2, k3, k4 = st.columns(4)
+    k1.metric(f"Ventas esperadas ({H} {fi['unidad_pl']})", f"{E.num(unid)} u.")
+    k2.metric("Ingresos esperados", E.clp_corto(ing_e) if ing_e else "—",
+              help=None if ing_e else "Asigna su precio en Precio y costo para ver montos.")
+    k3.metric("Margen esperado", E.clp_corto(marg_e) if marg_e else "—",
+              help=None if marg_e else "Requiere el costo unitario.")
+    k4.metric(f"Vs. últimos {H} {fi['unidad_pl']}", E.pct((ing_e - previo) / previo * 100) if ing_e and previo > 0 else "—")
+
+    a1, a2 = st.columns(2, gap="medium")
+    with a1:
+        f = fut[ent]
+        y = f["P50"].to_numpy() * infl[ent] * (S.precio(ent) or 1)
+        en_pesos = bool(S.precio(ent))
+        div, eje, hov = E.escala_pesos(y.max()) if en_pesos else (1.0, "Unidades", "%{y:,.0f} u.")
+        fig = go.Figure(go.Bar(x=f["fecha"], y=y / div, marker_color=E.AZUL, hovertemplate=hov + "<extra></extra>"))
+        fig.update_layout(title=("Ingresos" if en_pesos else "Ventas") + f" esperados por {fi['unidad']} · {ent}",
+                          yaxis_title=eje, hovermode="closest")
+        E.grafico(fig, key="tab_fin_periodo", alto=300, icono="payments")
+    with a2:
+        base = ing if ing else {e: float(fut[e]["P50"].sum()) for e in entidades}
+        serie = pd.Series(base).sort_values().tail(12)
+        div, eje, hov = E.escala_pesos(serie.max()) if ing else (1.0, "Unidades", "%{x:,.0f} u.")
+        fig = go.Figure(go.Bar(y=serie.index.astype(str), x=serie.values / div, orientation="h",
+                               marker_color=[E.AZUL_OSCURO if e == ent else E.AZUL for e in serie.index],
+                               hovertemplate=hov.replace("{y", "{x") + "<extra></extra>"))
+        fig.update_layout(title=("Ingresos" if ing else "Ventas") + f" esperados por {S.nombre_entidad(dp)}",
+                          xaxis_title=eje, hovermode="closest")
+        E.grafico(fig, key="tab_fin_ent", alto=300, icono="leaderboard")
+    b1, b2 = st.columns(2, gap="medium")
+    with b1:
+        en_p = bool(ing_e)
+        mensual = hist.set_index("fecha").resample("MS")["monto" if en_p else "objetivo"].sum().tail(24)
+        if len(mensual) > 1 and dp.config.frecuencia == "D" and not dp.df["fecha"].max().is_month_end:
+            mensual = mensual.iloc[:-1]       # último mes incompleto
+        div, eje, hov = E.escala_pesos(mensual.max()) if en_p else (1.0, "Unidades", "%{y:,.0f} u.")
+        fig = go.Figure(go.Scatter(x=mensual.index, y=mensual.values / div, mode="lines", name="Historial",
+                                   line=dict(color=E.AZUL, width=2), hovertemplate=hov))
+        fig.update_layout(title=("Ingresos" if en_p else "Ventas") + f" por mes (historial) · {ent}", yaxis_title=eje)
+        E.grafico(fig, key="tab_fin_mes", alto=300, icono="calendar_month")
+    with b2:
+        pt = patron_semana_mes([ent])
+        if pt is None:
+            E.nota("Hace falta más historial para ver los días o meses fuertes.")
+        else:
+            nombres, rel, que = pt
+            fig = go.Figure(go.Bar(x=[n.capitalize() for n in nombres], y=rel.values,
+                                   marker_color=[E.AQUA if v >= 0 else E.ROJO for v in rel.values],
+                                   hovertemplate="%{y:+.1f}%<extra></extra>"))
+            fig.update_layout(title=f"Ventas por {que.split()[0]} vs. el promedio · {ent}", yaxis_ticksuffix="%",
+                              hovermode="closest")
+            E.grafico(fig, key="tab_fin_patron", alto=300, icono="date_range")
+    if ing_e:
+        S.info_pie([S.nota_inflacion()])
+
+
 # el producto elegido es el mismo en todas las vistas de Finanzas
 fila = S.fila_chips("fin")
 ent = S.selector_entidad(entidades, dp, key="fin", fila=fila)
-if vista == "Precio y costo":
+if vista == "Resumen":
+    tablero(ent)
+elif vista == "Precio y costo":
     precio_y_costo(ent, fila)
 elif vista == "Comparar productos":
     comparar_productos(ent)
