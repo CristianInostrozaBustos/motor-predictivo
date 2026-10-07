@@ -1,12 +1,12 @@
 -- Motor Predictivo de Abastecimiento: tabla de pronósticos guardados por usuario
 create table if not exists public.pronosticos (
     id              uuid primary key default gen_random_uuid(),
-    usuario         text not null,              -- correo del usuario (login con Google)
+    usuario         text not null, -- login con Google
     nombre          text not null,
     creado          timestamptz not null default now(),
     actualizado     timestamptz not null default now(),
     archivo_nombre  text,
-    clave_modelo    text not null,              -- huella de los datos (modelo en Storage)
+    clave_modelo    text not null, -- Storage
     frecuencia      text,
     n_entidades     integer,
     horizonte       integer,
