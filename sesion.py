@@ -621,21 +621,34 @@ def _sync_puntos(opciones, estado, key, al_cambiar):
         al_cambiar(antes, ahora)
 
 
-def puntos_multi(opciones, estado, key, formato=None, maximo=None, al_cambiar=None):
+def _marcar_todos(opciones, estado, al_cambiar, todos):
+    antes = list(st.session_state.get(estado) or [])
+    ahora = list(opciones) if todos else antes[:1]
+    st.session_state[estado] = ahora
+    if al_cambiar:
+        al_cambiar(antes, ahora)
+
+
+def puntos_multi(opciones, estado, key, formato=None, maximo=None, al_cambiar=None, con_todos=False):
     """Selección múltiple con el mismo aspecto de la lista de puntos: cada punto se marca o desmarca solo.
-    La elección queda en session_state[estado] (lista)."""
+    Con listas largas aparecen "Todos" y "Solo uno". La elección queda en session_state[estado] (lista)."""
     opciones = list(opciones)
     fmt = formato or str
     sel = [o for o in (st.session_state.get(estado) or []) if o in opciones]
     st.session_state[estado] = sel
+    if con_todos and len(opciones) > 3:
+        with st.container(horizontal=True, gap="small", key=f"todos_{key}"):
+            st.button("Todos", key=f"_todos_{key}", type="tertiary", icon=":material/done_all:",
+                      on_click=_marcar_todos, args=(opciones, estado, al_cambiar, True),
+                      disabled=len(sel) == len(opciones))
+            st.button("Solo uno", key=f"_uno_{key}", type="tertiary", icon=":material/remove_done:",
+                      on_click=_marcar_todos, args=(opciones, estado, al_cambiar, False), disabled=len(sel) <= 1)
     with st.container(key=f"puntos_{key}", gap=None):
         for i, o in enumerate(opciones):
             kw = f"_pm_{key}_{i}"
             st.session_state[kw] = o in sel
             st.checkbox(fmt(o), key=kw, on_change=_sync_puntos, args=(opciones, estado, key, al_cambiar),
                         disabled=maximo is not None and len(sel) >= maximo and o not in sel)
-    if maximo is not None and len(opciones) > maximo:
-        st.caption(f"Hasta {maximo} a la vez.")
     return st.session_state[estado]
 
 
@@ -656,8 +669,9 @@ def selector_vista(entidades, dp, key, fila=None):
     st.session_state[kw_sel] = previa
     etiqueta = f"{mayus(nombre_entidad(dp))}"
     if fila is not None:
-        with chip(fila, f"{etiqueta}: {titulo_seleccion(previa, dp)}", f"vista_{key}"):
-            puntos_multi(entidades, "vista_sel", key=f"vs_{key}", maximo=MAX_SERIES, al_cambiar=_activa_ultima)
+        texto = f"Todos ({len(entidades)})" if len(previa) == len(entidades) else titulo_seleccion(previa, dp)
+        with chip(fila, f"{etiqueta}: {texto}", f"vista_{key}"):
+            puntos_multi(entidades, "vista_sel", key=f"vs_{key}", al_cambiar=_activa_ultima, con_todos=True)
         st.session_state[kw_sel] = st.session_state["vista_sel"]
     elif len(entidades) <= MAX_BOTONES:
         st.pills(etiqueta, entidades, selection_mode="multi", key=kw_sel, on_change=_sync_vista, args=(kw_sel,))

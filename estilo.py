@@ -295,6 +295,9 @@ section[data-testid="stSidebar"] [data-testid="stVerticalBlock"] { gap: 0.35rem;
 [class*="st-key-_pm_"] label > span + div svg { display: none; }
 [class*="st-key-_pm_"] label:has(input:checked) > span + div {
     background: radial-gradient(circle, #ffffff 0 0.19rem, #1c5cab 0.21rem) !important; }
+[class*="st-key-todos_"] { gap: 4px !important; margin-bottom: 2px; }
+[class*="st-key-todos_"] button { padding: 0 4px !important; min-height: 0 !important; }
+[class*="st-key-todos_"] button p { font-size: .82rem; }
 [class*="st-key-puntos_"] { gap: 0.35rem !important; }
 /* tarjeta de cada gráfico */
 [class*="st-key-tarjeta_"] { background: #ffffff; border: 1px solid rgba(11,11,11,0.07); border-radius: 14px;
