@@ -186,6 +186,8 @@ _, res = S.resultado()
 if res is not None:
     S.actualizar_registro(config=st.session_state["config_actual"])
 else:
-    st.page_link("paginas/pronostico.py", label="Siguiente: generar el pronóstico", icon=":material/arrow_forward:")
+    with fila.container(key="btn_siguiente", width="content"):
+        if st.button("Generar pronóstico", type="primary", icon=":material/arrow_forward:"):
+            st.switch_page("paginas/pronostico.py")
 
 S.panel_dataset()

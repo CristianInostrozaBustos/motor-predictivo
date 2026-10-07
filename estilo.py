@@ -318,6 +318,12 @@ section[data-testid="stSidebar"] [data-testid="stVerticalBlock"] { gap: 0.35rem;
 [class*="st-key-tarjeta_ir_"]:hover { border-color: rgba(42,120,214,0.45);
     box-shadow: 0 1px 3px rgba(11,11,11,0.06), 0 8px 22px rgba(42,120,214,0.12); }
 [class*="st-key-tarjeta_ir_"] .nsewdrag, [class*="st-key-tarjeta_ir_"] .bars path { cursor: pointer !important; }
+[class*="st-key-btn_siguiente"] { margin-left: auto; }
+[class*="st-key-btn_siguiente"] button { background: #e5484d !important; border-color: #e5484d !important;
+    border-radius: 999px; padding: 4px 16px !important; min-height: 0 !important;
+    box-shadow: 0 4px 14px rgba(229,72,77,0.30); }
+[class*="st-key-btn_siguiente"] button:hover { background: #d03b3b !important; border-color: #d03b3b !important; }
+[class*="st-key-btn_siguiente"] button p { color: #ffffff !important; font-weight: 650; font-size: .88rem; }
 .kpis { display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 6px 2px 12px 2px; }
 .kpis .kpi { display: flex; align-items: baseline; gap: 6px; font-size: .82rem; color: #6b6a66; }
 .kpis .kpi b { color: #12305e; font-weight: 700; font-size: .92rem; }
