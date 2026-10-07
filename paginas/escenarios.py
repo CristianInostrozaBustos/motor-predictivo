@@ -57,15 +57,6 @@ import cuenta  # noqa: E402
 
 registro = S.registro_actual()
 guardados = registro.get("escenarios", []) if registro else []
-if guardados:
-    nombres = [g["nombre"] for g in guardados]
-    elegido = st.pills("Tus escenarios guardados", nombres, key="esc_guardado_sel")
-    if elegido and st.session_state.get("_esc_cargado") != elegido:
-        g = guardados[nombres.index(elegido)]
-        st.session_state["escenario"] = dict(clave=S.clave_dataset(dp), desde=g["desde"], duracion=g["duracion"],
-                                             alcance=g["alcance"] if g["alcance"] in (["Todas"] + list(res.series)) else "Todas",
-                                             eventos=[X.Evento(**ev) for ev in g["eventos"]])
-        st.session_state["_esc_cargado"] = elegido
 
 # ---------------------------------------------------------------- armar el escenario
 disponibles = ["demanda", "retraso"]
@@ -111,96 +102,112 @@ primera_fecha = res.series[entidades[0]].fechas[-1] + pd.tseries.frequencies.to_
 dur_def = {"D": 30, "W": 6, "M": 3, "Q": 2}[freq]
 dur_max = max(1, min(res.plan.horizonte_max - 1, {"D": 120, "W": 26, "M": 12, "Q": 4}[freq]))
 
-with st.container(border=True, key="panel_control_esc"):
-    st.markdown("**¿Qué ocurre?** · puedes combinar varios eventos")
+ss = st.session_state
+fila = S.fila_chips("esc")
+alcance = S.chip_opcion(fila, "Afecta a: ", (["Todas"] if len(entidades) > 1 else []) + entidades, estado="esc_alcance",
+                        key="esc_alc", formato=lambda x: "Todos" if x == "Todas" else x)
+if alcance != "Todas":
+    ss["entidad"] = alcance
+    if alcance not in ss.get("vista_sel", []):
+        ss["vista_sel"] = [alcance]
+ss["_esc_activa"] = ss.get("entidad")
+
+with S.chip(fila, "Eventos", "esc_tipos", icono=":material/add:"):
     tipos = st.pills("Eventos", disponibles, format_func=lambda t: X.TIPOS[t], selection_mode="multi",
                      default=["retraso"], label_visibility="collapsed", key="esc_tipos")
-    eventos = []
-    n_ev = len(tipos or [])
-    fila = st.columns(n_ev + 2 if n_ev <= 2 else n_ev, gap="medium")
-    if tipos:
-        for col, t in zip(fila, tipos):
-            with col:
-                if t == "demanda":
-                    v = st.slider("Cambio en la demanda (%)", -60, 150, 25, 5, key="esc_dem",
-                                  help="Por ejemplo, un cliente nuevo (+) o un competidor que entra (−).")
-                    eventos.append(X.Evento("demanda", v / 100))
-                elif t == "retraso":
-                    v = st.number_input("Días adicionales de retraso", 1, 180, 10, key="esc_ret",
-                                        help="Los pedidos que emitas durante el evento llegan con este retraso extra.")
-                    c_alt = None
-                    if any(S.costo_compra(x) for x in entidades):
-                        cubrir = st.toggle("Evaluar cubrirlo con un proveedor alternativo", key="esc_alt",
-                                           help="Compara quedarte con el retraso contra comprarle a otro proveedor que "
-                                                "llega a tiempo pero cobra más por unidad.")
-                        if cubrir:
-                            ref = (st.session_state.get("esc_alcance") if st.session_state.get("esc_alcance") not in
-                                   (None, "Todas") else entidades[0])
-                            sug = costo_alternativo_detectado(ref) or (S.costo_compra(ref) or 0) * 1.3
-                            c_alt = st.number_input("Costo por unidad del proveedor alternativo ($)", 0.0, None,
-                                                    float(round(sug)), 50.0, format="%.0f", key="esc_alt_costo",
-                                                    help=f"Hoy pagas ${E.num(S.costo_compra(ref) or 0)} por "
-                                                         f"unidad a tu proveedor principal ({ref}).")
-                    eventos.append(X.Evento("retraso", float(v), costo_alt=c_alt))
-                elif t == "precio":
-                    alc = st.session_state.get("esc_alcance")
-                    ref_p = S.precio(alc) if alc not in (None, "Todas") else None
-                    como = S.elegir_uno("Cambio de precio en", ["%", "Precio nuevo ($)"] if ref_p else ["%"],
-                                        key="pre_como", estado="esc_pre_como")
-                    if como == "%":
-                        v = st.slider("Cambio de precio (%)", -50, 50, 15, 5, key="esc_pre")
-                        if not ref_p and len(entidades) > 1:
-                            st.caption("Para ingresar el precio en pesos, elige " + S.un_entidad(dp) +
-                                       " en «Afecta a».")
-                    else:
-                        nuevo = st.number_input(f"Precio nuevo de {alc} ($)", 1.0, None, float(round(ref_p * 1.15)),
-                                                10.0, format="%.0f", key=f"esc_pre_monto_{alc}")
-                        v = (nuevo / ref_p - 1) * 100
-                        st.caption(f"Hoy cuesta {E.clp_md(ref_p)}: es un cambio de " + f"{v:+.1f}".replace(".", ",") + "%.")
-                    with st.expander("Opciones avanzadas"):
-                        usar_el = st.toggle("Usar una sensibilidad al precio conocida", key="esc_pre_usar_el",
-                                            help="Por defecto, el efecto del precio en la demanda lo calcula el modelo "
-                                                 "con lo que aprendió de tu historial.")
-                        el = st.number_input("Elasticidad precio-demanda", -3.0, 0.0, -0.3, 0.05, format="%.2f",
-                                             key="esc_pre_el", disabled=not usar_el)
-                        st.caption("Cuánto cambian tus ventas cuando cambia el precio. Por ejemplo, −0,3 significa que "
-                                   "si el precio sube 10%, vendes 3% menos. Úsala si conoces este dato de tu negocio o "
-                                   "si tu historial casi no tiene cambios de precio.")
-                    eventos.append(X.Evento("precio", v / 100, elasticidad=float(el) if usar_el else None))
-                elif t == "promocion":
-                    st.markdown("**Promoción**")
-                    st.caption("Se activa una promoción durante todo el evento; el modelo estima su efecto.")
-                    eventos.append(X.Evento("promocion", 1.0))
-                elif t == "exogena":
-                    var = S.elegir_uno("Variable", otras, key="var", estado="esc_var",
-                                       formato=lambda v: dp.etiquetas.get(v, v))
-                    v = st.slider("Cambio (%)", -60, 150, 30, 5, key="esc_exo")
-                    eventos.append(X.Evento("exogena", v / 100, var))
+    st.caption("Puedes combinar varios.")
+eventos = []
+for t in tipos or []:
+    if t == "demanda":
+        with S.chip(fila, f"Demanda: {ss.get('esc_dem', 25):+d}%", "esc_dem"):
+            v = st.slider("Cambio en la demanda (%)", -60, 150, 25, 5, key="esc_dem",
+                          help="Por ejemplo, un cliente nuevo (+) o un competidor que entra (−).")
+        eventos.append(X.Evento("demanda", v / 100))
+    elif t == "retraso":
+        con_alt = bool(ss.get("esc_alt")) and any(S.costo_compra(x) for x in entidades)
+        with S.chip(fila, f"Retraso: +{ss.get('esc_ret', 10)} días" + (" · proveedor alternativo" if con_alt else ""),
+                    "esc_ret"):
+            v = st.number_input("Días adicionales de retraso", 1, 180, 10, key="esc_ret",
+                                help="Los pedidos que emitas durante el evento llegan con este retraso extra.")
+            c_alt = None
+            if any(S.costo_compra(x) for x in entidades):
+                cubrir = st.toggle("Evaluar cubrirlo con un proveedor alternativo", key="esc_alt",
+                                   help="Compara quedarte con el retraso contra comprarle a otro proveedor que "
+                                        "llega a tiempo pero cobra más por unidad.")
+                if cubrir:
+                    ref = alcance if alcance != "Todas" else entidades[0]
+                    sug = costo_alternativo_detectado(ref) or (S.costo_compra(ref) or 0) * 1.3
+                    c_alt = st.number_input("Costo por unidad del proveedor alternativo ($)", 0.0, None,
+                                            float(round(sug)), 50.0, format="%.0f", key="esc_alt_costo",
+                                            help=f"Hoy pagas ${E.num(S.costo_compra(ref) or 0)} por "
+                                                 f"unidad a tu proveedor principal ({ref}).")
+        eventos.append(X.Evento("retraso", float(v), costo_alt=c_alt))
+    elif t == "precio":
+        alc = alcance
+        ref_p = S.precio(alc) if alc != "Todas" else None
+        como_txt = ss.get("esc_pre_como", "%") if ref_p else "%"
+        k_monto = f"esc_pre_monto_{alc}"
+        etiqueta = (f"Precio: {ss.get('esc_pre', 15):+d}%" if como_txt == "%"
+                    else f"Precio: {E.clp_corto(ss.get(k_monto, float(round((ref_p or 0) * 1.15))))}")
+        with S.chip(fila, etiqueta, "esc_pre"):
+            como = S.elegir_uno("Cambio de precio en", ["%", "Precio nuevo ($)"] if ref_p else ["%"],
+                                key="pre_como", estado="esc_pre_como")
+            if como == "%":
+                v = st.slider("Cambio de precio (%)", -50, 50, 15, 5, key="esc_pre")
+                if not ref_p and len(entidades) > 1:
+                    st.caption("Para ingresarlo en pesos, elige " + S.un_entidad(dp) + " en «Afecta a».")
+            else:
+                nuevo = st.number_input(f"Precio nuevo de {alc} ($)", 1.0, None, float(round(ref_p * 1.15)),
+                                        10.0, format="%.0f", key=k_monto)
+                v = (nuevo / ref_p - 1) * 100
+                st.caption(f"Hoy cuesta {E.clp_md(ref_p)}: es un cambio de " + f"{v:+.1f}".replace(".", ",") + "%.")
+            usar_el = st.toggle("Usar una sensibilidad al precio conocida", key="esc_pre_usar_el",
+                                help="Por defecto, el efecto del precio en la demanda lo calcula el modelo "
+                                     "con lo que aprendió de tu historial.")
+            el = st.number_input("Elasticidad precio-demanda", -3.0, 0.0, -0.3, 0.05, format="%.2f",
+                                 key="esc_pre_el", disabled=not usar_el,
+                                 help="Cuánto cambian tus ventas cuando cambia el precio. Por ejemplo, −0,3 significa "
+                                      "que si el precio sube 10%, vendes 3% menos.")
+        eventos.append(X.Evento("precio", v / 100, elasticidad=float(el) if usar_el else None))
+    elif t == "promocion":
+        with S.chip(fila, "Promoción", "esc_promo"):
+            st.caption("Se activa una promoción durante todo el evento; el modelo estima su efecto.")
+        eventos.append(X.Evento("promocion", 1.0))
+    elif t == "exogena":
+        var_txt = ss.get("esc_var") if ss.get("esc_var") in otras else otras[0]
+        with S.chip(fila, f"{dp.etiquetas.get(var_txt, var_txt)}: {ss.get('esc_exo', 30):+d}%", "esc_exo"):
+            var = S.elegir_uno("Variable", otras, key="var", estado="esc_var",
+                               formato=lambda v: dp.etiquetas.get(v, v))
+            v = st.slider("Cambio (%)", -60, 150, 30, 5, key="esc_exo")
+        eventos.append(X.Evento("exogena", v / 100, var))
 
-    if n_ev <= 2:
-        c2, c3 = fila[-2], fila[-1]
-    else:
-        c2, c3, _ = st.columns([1, 1, 2], gap="medium")
-    alcance = S.elegir_uno("Afecta a", (["Todas"] if len(entidades) > 1 else []) + entidades, key="alc",
-                           estado="esc_alcance", formato=lambda x: "Todos" if x == "Todas" else x)
-    if alcance != "Todas":
-        st.session_state["entidad"] = alcance
-        if alcance not in st.session_state.get("vista_sel", []):
-            st.session_state["vista_sel"] = [alcance]
-    st.session_state["_esc_activa"] = st.session_state.get("entidad")
-    adelanto = {"D": pd.Timedelta(days=14), "W": pd.Timedelta(weeks=2), "M": pd.DateOffset(months=1), "Q": pd.DateOffset(months=3)}[freq]
-    # el retraso solo se nota si el evento incluye un pedido: se sugiere empezar en el próximo pedido
-    ref_ent = alcance if alcance != "Todas" else None
-    prox = proximo_pedido(ref_ent)
-    inicio_def = (primera_fecha + adelanto).date()
-    if prox is not None and "retraso" in (tipos or []) and prox.date() >= primera_fecha.date():
-        inicio_def = prox.date()
-    fecha_ini = c2.date_input("Empieza", inicio_def, min_value=primera_fecha.date(), format="DD/MM/YYYY", key="esc_ini")
+adelanto = {"D": pd.Timedelta(days=14), "W": pd.Timedelta(weeks=2), "M": pd.DateOffset(months=1), "Q": pd.DateOffset(months=3)}[freq]
+# el retraso solo se nota si el evento incluye un pedido: se sugiere empezar en el próximo pedido
+ref_ent = alcance if alcance != "Todas" else None
+prox = proximo_pedido(ref_ent)
+inicio_def = (primera_fecha + adelanto).date()
+if prox is not None and "retraso" in (tipos or []) and prox.date() >= primera_fecha.date():
+    inicio_def = prox.date()
+with S.chip(fila, f"Empieza: {ss.get('esc_ini', inicio_def):%d/%m/%Y}", "esc_ini", icono=":material/event:"):
+    fecha_ini = st.date_input("Empieza", inicio_def, min_value=primera_fecha.date(), format="DD/MM/YYYY", key="esc_ini")
     if prox is not None:
-        c2.caption(f"Próximo pedido{' de ' + ref_ent if ref_ent else ''}: **{prox:%d/%m/%Y}**.",
-                   help="Un retraso solo se nota si el evento incluye un pedido.")
-    duracion = c3.slider(f"Dura ({u_pl})", 1, dur_max, min(dur_def, dur_max), key="esc_dur")
-    simular = st.button("Simular escenario", type="primary", icon=":material/play_arrow:", disabled=not eventos)
+        st.caption(f"Próximo pedido{' de ' + ref_ent if ref_ent else ''}: **{prox:%d/%m/%Y}**. Un retraso solo se "
+                   "nota si el evento incluye un pedido.")
+dur_txt = ss.get("esc_dur", min(dur_def, dur_max))
+with S.chip(fila, f"Dura: {dur_txt} {u_pl if dur_txt != 1 else u}", "esc_dur"):
+    duracion = st.slider(f"Dura ({u_pl})", 1, dur_max, min(dur_def, dur_max), key="esc_dur")
+with fila.container(width="content"):
+    simular = st.button("Simular", type="primary", icon=":material/play_arrow:", disabled=not eventos)
+if guardados:
+    with S.chip(fila, "Guardados", "esc_guardados", icono=":material/bookmark:"):
+        nombres = [g["nombre"] for g in guardados]
+        elegido = st.pills("Tus escenarios guardados", nombres, key="esc_guardado_sel")
+        if elegido and st.session_state.get("_esc_cargado") != elegido:
+            g = guardados[nombres.index(elegido)]
+            st.session_state["escenario"] = dict(clave=S.clave_dataset(dp), desde=g["desde"], duracion=g["duracion"],
+                                                 alcance=g["alcance"] if g["alcance"] in (["Todas"] + list(res.series)) else "Todas",
+                                                 eventos=[X.Evento(**ev) for ev in g["eventos"]])
+            st.session_state["_esc_cargado"] = elegido
 
 offset = pd.tseries.frequencies.to_offset(FRECUENCIAS[freq]["pandas"])
 desde = len(pd.date_range(primera_fecha, pd.Timestamp(fecha_ini), freq=offset)) - 1
@@ -211,12 +218,12 @@ if simular:
 
 guardado = st.session_state.get("escenario")
 if not guardado or guardado["clave"] != S.clave_dataset(dp):
-    st.caption(":material/info: Elige uno o más eventos y presiona **Simular escenario**.")
+    st.caption(":material/info: Elige uno o más eventos y presiona **Simular**.")
     st.stop()
 if repr(guardado) != repr(actual):
-    st.info(("Cambiaste el escenario. Presiona **Simular escenario** para actualizar el resultado"
-             if eventos else "Elige al menos un evento para simular")
-            + "; mientras tanto ves el último que simulaste.", icon=":material/refresh:")
+    st.caption(":material/refresh: " + ("Cambiaste el escenario: presiona **Simular** para actualizarlo"
+                                        if eventos else "Elige al menos un evento para simular")
+               + "; mientras tanto ves el último que simulaste.")
 
 esc = X.Escenario(guardado["eventos"], guardado["desde"], guardado["duracion"])
 afectadas = entidades if guardado["alcance"] == "Todas" else [guardado["alcance"]]
@@ -277,8 +284,10 @@ if len(afectadas) > 1:
                if S.precio(e) else {}),
         })
     tabla = pd.DataFrame(filas)
-    ent = S.selector_entidad(afectadas, dp, key="esc")
+    fila_res = S.fila_chips("esc_res")
+    ent = S.selector_entidad(afectadas, dp, key="esc", fila=fila_res)
 else:
+    fila_res = S.fila_chips("esc_res")
     ent = afectadas[0]
 
 # ---------------------------------------------------------------- detalle de una entidad
@@ -427,8 +436,11 @@ if vista_pag == "Impacto en dinero" and not S.precio(ent):
 if vista_pag == "Impacto en dinero" and S.precio(ent):
     precio_arch = S.precio(ent)
     costo_arch = S.costo_compra(ent)
-    with st.popover("Precio y costo usados", icon=":material/tune:"):
-        st.caption(f"Por defecto se usan los valores de {ent} de la página Finanzas. Puedes probar otros aquí.")
+    p_txt = st.session_state.get(f"precio_din_{ent}", float(round(precio_arch or 0)))
+    c_txt = st.session_state.get(f"costo_din_{ent}", float(round(costo_arch or 0)))
+    with S.chip(fila_res, f"Precio: {E.clp_corto(p_txt)}" + (f" · Costo: {E.clp_corto(c_txt)}" if c_txt else ""),
+                "esc_pc", icono=":material/sell:"):
+        st.caption(f"Por defecto, los valores de {ent} en Finanzas. Puedes probar otros aquí.")
         precio_ent = st.number_input("Precio de venta por unidad ($)", 0.0, None, float(round(precio_arch or 0)), 10.0,
                                      format="%.0f", key=f"precio_din_{ent}") or None
         costo_ent = st.number_input("Costo por unidad ($)", 0.0, None, float(round(costo_arch or 0)), 10.0,
@@ -437,7 +449,7 @@ if vista_pag == "Impacto en dinero" and S.precio(ent):
     if costo_ent and precio_ent and costo_ent >= precio_ent:
         E.nota(f"El costo por unidad ({E.clp(costo_ent)}) es igual o mayor que el precio de venta ({E.clp(precio_ent)}). "
                "Probablemente la columna marcada como costo es el precio de un insumo (por ejemplo, por kilo) y no el costo "
-               f"de una unidad de {ent}. El margen se omite: ingresa el costo real en <b>Precio y costo usados</b>.")
+               f"de una unidad de {ent}. El margen se omite: ingresa el costo real en <b>Precio</b> (arriba).")
         costo_ent = None
     din = X.impacto_dinero(c, esc, precio_ent, costo_ent, costo_arch, inflacion=S.factor_inflacion(c.base["fecha"]))
     if din is None:
@@ -524,10 +536,9 @@ if vista_pag == "Impacto en dinero" and S.precio(ent):
 
 # ---------------------------------------------------------------- guardar
 if registro:
-    with st.container(border=True):
-        g1, g2 = st.columns([3, 1], vertical_alignment="bottom")
-        nombre_esc = g1.text_input("Guardar este escenario como", value=descripcion.capitalize()[:60], key="esc_nombre")
-        if g2.button("Guardar escenario", icon=":material/bookmark_add:", width="stretch"):
+    with S.chip(fila_res, "Guardar escenario", "esc_guardar", icono=":material/bookmark_add:"):
+        nombre_esc = st.text_input("Nombre", value=descripcion.capitalize()[:60], key="esc_nombre")
+        if st.button("Guardar", icon=":material/bookmark_add:", type="primary"):
             nuevo = dict(nombre=nombre_esc.strip() or descripcion, desde=esc.desde, duracion=esc.duracion,
                          alcance=guardado["alcance"],
                          eventos=[dict(tipo=ev.tipo, valor=ev.valor, var=ev.var, elasticidad=ev.elasticidad, costo_alt=ev.costo_alt)

@@ -25,39 +25,45 @@ E.titulo_compacto("Finanzas", S.etiqueta_vista(vista))
 val = S.valores(dp)
 
 
-def panel_inflacion():
+def chip_inflacion(fila):
     from motor import inflacion as I
+    ss = st.session_state
     c = S.config_inflacion()
-    with st.container(border=True, key="panel_control_inflacion"):
-        st.markdown("**Inflación** · proyecta el precio y el costo hacia adelante")
-        c1, c2, c3 = st.columns(3)
+    # los valores elegidos se aplican antes de dibujar la etiqueta, para que no quede atrasada
+    nuevo = dict(c, modo=ss.get("inf_modo", c["modo"]))
+    for k, campo in (("inf_pais", "pais"), ("inf_fuente", "fuente"), ("inf_pct", "pct")):
+        if ss.get(k) is not None:
+            nuevo[campo] = float(ss[k]) if campo == "pct" else ss[k]
+    S.guardar_config_inflacion(nuevo)
+    c = S.config_inflacion()
+    inf = S.inflacion_actual()
+    with S.chip(fila, f"Inflación: {inf['corta']}", "fin_inflacion",
+                icono=":material/warning:" if inf["aviso"] else None):
         modos = {"pais": "Según el país", "propio": "Valor propio", "sin": "Sin ajuste"}
-        modo = c1.selectbox("Ajuste", list(modos), index=list(modos).index(c["modo"]), format_func=modos.get,
-                            key="inf_modo")
-        nuevo = dict(c, modo=modo)
-        if modo == "pais":
+        st.selectbox("Ajuste", list(modos), index=list(modos).index(c["modo"]), format_func=modos.get, key="inf_modo")
+        if c["modo"] == "pais":
             paises = list(I.PAISES)
-            nuevo["pais"] = c2.selectbox("País", paises, index=paises.index(c["pais"]) if c["pais"] in paises else 0,
-                                         format_func=I.PAISES.get, key="inf_pais")
-            if nuevo["pais"] == "CHL":
+            st.selectbox("País", paises, index=paises.index(c["pais"]) if c["pais"] in paises else 0,
+                         format_func=I.PAISES.get, key="inf_pais")
+            if c["pais"] == "CHL":
                 fuentes = {"ipc12": "IPC últimos 12 meses", "fmi": "Proyección del FMI"}
-                nuevo["fuente"] = c3.selectbox("Fuente", list(fuentes),
-                                               index=list(fuentes).index(c["fuente"]) if c["fuente"] in fuentes else 0,
-                                               format_func=fuentes.get, key="inf_fuente")
-        elif modo == "propio":
-            nuevo["pct"] = float(c2.number_input("Inflación anual (%)", -20.0, 500.0, float(c["pct"]), 0.1,
-                                                 format="%.1f", key="inf_pct"))
-        S.guardar_config_inflacion(nuevo)
-        inf = S.inflacion_actual()
-        st.caption((":material/trending_up: " if inf["activa"] else ":material/pause: ") + S.mayus(inf["texto"]) + "."
-                   + (f" {inf['aviso']}" if inf["aviso"] else "")
-                   + " Las unidades pronosticadas no cambian: solo los montos en pesos.")
+                st.selectbox("Fuente", list(fuentes), index=list(fuentes).index(c["fuente"]) if c["fuente"] in fuentes
+                             else 0, format_func=fuentes.get, key="inf_fuente")
+        elif c["modo"] == "propio":
+            st.number_input("Inflación anual (%)", -20.0, 500.0, float(c["pct"]), 0.1, format="%.1f", key="inf_pct")
+        st.caption(S.mayus(inf["texto"]) + "." + (f" {inf['aviso']}" if inf["aviso"] else "")
+                   + " Solo cambia los montos en pesos, no las unidades.")
 
 
-def precio_y_costo(ent):
-    st.caption("Se toman de tu archivo cuando vienen. Puedes asignarlos o corregirlos aquí; se usan en todo el sitio. "
-               "Sin precio, todo se muestra en unidades.")
-    panel_inflacion()
+def precio_y_costo(ent, fila):
+    chip_inflacion(fila)
+    ss = st.session_state
+    with S.chip(fila, f"Mantener inventario: {E.num(ss.get('_mantener_pct', S.costo_mantener_pct()))}% al año",
+                "fin_mantener"):
+        ss["costo_mantener_pct"] = st.number_input(
+            "Costo anual de mantener inventario (% de su valor)", 0.0, 100.0, S.costo_mantener_pct(), 1.0, format="%.0f",
+            key="_mantener_pct", help="Bodega, capital inmovilizado, seguros y mermas. Un 20% al año es una referencia común.")
+    st.caption("Edita el precio y el costo en la tabla; se usan en todo el sitio. Sin precio, todo va en unidades.")
     base = val.reset_index()[["entidad", "precio", "costo", "origen_precio", "origen_costo"]]
     base[["precio", "costo"]] = base[["precio", "costo"]].astype(float)
     f_fin = fut[entidades[0]]["fecha"].iloc[-1]
@@ -85,9 +91,6 @@ def precio_y_costo(ent):
     if not np.allclose(antes.to_numpy(), ahora.to_numpy()):
         S.guardar_valores(dp, nuevos[["precio", "costo"]])
         st.rerun()
-    st.session_state["costo_mantener_pct"] = st.number_input(
-        "Costo anual de mantener inventario (% de su valor)", 0.0, 100.0, S.costo_mantener_pct(), 1.0, format="%.0f",
-        help="Bodega, capital inmovilizado, seguros y mermas. Un 20% al año es una referencia común.")
     raros = [e for e in val.index if pd.notna(val.loc[e, "precio"]) and pd.notna(val.loc[e, "costo"])
              and val.loc[e, "costo"] >= val.loc[e, "precio"]]
     if raros:
@@ -114,9 +117,8 @@ def comparar_productos(ent):
 
 
 def insumos(ent):
-    st.caption("Opcional. Indica cuánto insumo usa cada unidad vendida (por ejemplo, 18 g de café por taza) y el sitio "
-               f"calcula cuánto necesita{' ' + str(ent) if len(entidades) > 1 else 's'} para el período: lo normal "
-               "(pronóstico) y lo prudente (escenario alto).")
+    st.caption("Indica cuánto insumo usa cada unidad vendida (por ejemplo, 18 g de café por taza) y se calcula "
+               "cuánto necesitas: lo normal y lo prudente (escenario alto).")
     clave_ins = f"insumos_{S.clave_dataset(dp)}"
     base_ins = st.session_state.get(clave_ins, pd.DataFrame({
         "Insumo": pd.Series(dtype="str"), "Cantidad por unidad": pd.Series(dtype="float"),
@@ -147,9 +149,10 @@ def insumos(ent):
 
 
 # el producto elegido es el mismo en todas las vistas de Finanzas
-ent = S.selector_entidad(entidades, dp, key="fin")
+fila = S.fila_chips("fin")
+ent = S.selector_entidad(entidades, dp, key="fin", fila=fila)
 if vista == "Precio y costo":
-    precio_y_costo(ent)
+    precio_y_costo(ent, fila)
 elif vista == "Comparar productos":
     comparar_productos(ent)
 elif vista == "Insumos":
@@ -168,7 +171,6 @@ else:
         return serie.to_numpy() * (precios[e] or 0.0) * infl[e][:len(serie)]
 
     if vista == "Meta e ingresos":
-        panel = st.container(border=True, key="panel_control_fin")
         tarjetas = st.container()
         unid = sum(fut[e]["P50"].sum() for e in ver)
         ingresos = {q: sum(monto(e, fut[e][q]).sum() for e in con_precio) for q in ("P10", "P50", "P90")}
@@ -253,13 +255,15 @@ else:
         anterior = float((ultimos["objetivo"] * ultimos["entidad"].map(precios).fillna(0)).sum() if en_pesos
                          else ultimos["objetivo"].sum())
         meta_def = float(round((anterior if anterior > 0 else mu_total) / paso) * paso)
-        m1, m2 = panel.columns([1, 2], vertical_alignment="bottom")
-        m2.caption(f"Por defecto: lo que vendiste {ref_txt} ({fmt_md(anterior)}).")
+        k_meta = f"meta_{S.clave_dataset(dp)}_{en_pesos}"
+        meta_txt = st.session_state.get(k_meta, meta_def)
+        with S.chip(fila, "Meta: " + (E.clp_corto(meta_txt) if en_pesos else f"{E.num(meta_txt)} u."), "fin_meta",
+                    icono=":material/flag:"):
+            meta = st.number_input(f"Meta para los próximos {H} {fi['unidad_pl']} " + ("($)" if en_pesos else "(u.)"),
+                                   0.0, None, meta_def, float(paso), format="%.0f", key=k_meta)
+            st.caption(f"Por defecto: lo que vendiste {ref_txt} ({fmt_md(anterior)}).")
         if not en_pesos:
-            m2.caption(f":material/info: {ent} no tiene precio, así que la meta va en unidades. Asígnalo en "
-                       "**Precio y costo**.")
-        meta = m1.number_input(f"Meta para los próximos {H} {fi['unidad_pl']} " + ("($)" if en_pesos else "(u.)"),
-                               0.0, None, meta_def, float(paso), format="%.0f", key=f"meta_{S.clave_dataset(dp)}_{en_pesos}")
+            S.chip_texto(fila, f"Sin precio: la meta va en unidades")
         prob = 0.5 * (1 - math.erf((meta - mu_total) / (sd_total * math.sqrt(2)))) if sd_total > 0 else float(mu_total >= meta)
         por_dia_meta, por_dia_pron = meta / H, mu_total / H
         color = "🟢" if prob >= 0.7 else ("🟠" if prob >= 0.4 else "🔴")
@@ -291,8 +295,7 @@ else:
             fig.update_layout(title=("Ingresos acumulados" if en_pesos else "Ventas acumuladas") + f" vs. tu meta · {nombre_vista}",
                               yaxis_title=eje_y, height=400)
             E.grafico(fig, key="fig_meta")
-            st.caption("La probabilidad usa el error real que tuvo el modelo en la prueba con datos pasados, acumulado en el "
-                       f"período, no solo el rango de cada {fi['unidad']}."
+            st.caption("La probabilidad usa el error real del modelo en la prueba con datos pasados."
                        + (" " + S.nota_inflacion() if en_pesos else ""))
     else:
         hist = dp.df[dp.df["entidad"].isin(ver)].groupby("fecha")["objetivo"].sum()

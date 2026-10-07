@@ -397,16 +397,17 @@ def inflacion_actual() -> dict:
     from motor import inflacion as I
     c = config_inflacion()
     if c["modo"] == "sin":
-        return dict(tasas=0.0, texto="sin ajuste por inflación (precios de hoy)", aviso=None, activa=False)
+        return dict(tasas=0.0, texto="sin ajuste por inflación (precios de hoy)", aviso=None, activa=False,
+                    corta="sin ajuste")
     if c["modo"] == "propio":
         return dict(tasas=float(c["pct"]), texto=f"{E.num(c['pct'], 1)}% anual (valor propio)", aviso=None,
-                    activa=True)
+                    activa=True, corta=f"{E.num(c['pct'], 1)}% anual")
     iso = c["pais"]
     nombre = I.PAISES.get(iso, iso)
     try:
         if iso == "CHL" and c["fuente"] == "ipc12":
             d = _ipc_chile()
-            return dict(tasas=d["pct"], activa=True, aviso=None,
+            return dict(tasas=d["pct"], activa=True, aviso=None, corta=f"Chile · IPC {E.num(d['pct'], 1)}%",
                         texto=f"Chile {E.num(d['pct'], 1)}% anual · IPC de los últimos 12 meses "
                               f"(INE y Banco Central, a {d['hasta']:%m/%Y})")
         d = _inflacion_fmi(iso)
@@ -416,10 +417,11 @@ def inflacion_actual() -> dict:
         anos = list(range((base + pd.Timedelta(days=1)).year, (base + pd.Timedelta(days=dias)).year + 1))
         partes = " y ".join(f"{E.num(I.tasa_del_ano(d['tasas'], a), 1)}% en {a}" for a in anos)
         return dict(tasas=d["tasas"], activa=True, aviso=None,
+                    corta=f"{nombre} · FMI {E.num(I.tasa_del_ano(d['tasas'], anos[0]), 1)}%",
                     texto=f"{nombre}: {partes} · proyección del FMI, {d['fuente']}")
     except Exception:  # noqa: BLE001
         fuente = "el IPC de Chile" if (iso == "CHL" and c["fuente"] == "ipc12") else "el FMI"
-        return dict(tasas=float(c["pct"]), activa=True,
+        return dict(tasas=float(c["pct"]), activa=True, corta=f"{E.num(c['pct'], 1)}% anual",
                     texto=f"{E.num(c['pct'], 1)}% anual",
                     aviso=f"No se pudo consultar {fuente} en este momento; se usa {E.num(c['pct'], 1)}% anual.")
 
@@ -437,7 +439,7 @@ def nota_inflacion() -> str:
     inf = inflacion_actual()
     if not inf["activa"]:
         return "Montos con precios de hoy, sin ajuste por inflación."
-    return f"Precios y costos ajustados por inflación: {inf['texto']}. Puedes cambiarlo en Finanzas → Precio y costo."
+    return f"Precios y costos ajustados por inflación: {inf['texto']}. Se cambia en Finanzas → Precio y costo."
 
 
 def costo_mantener_pct():
@@ -581,9 +583,9 @@ def _sync_vista(clave_widget):
         st.session_state["entidad"] = ahora[0]
 
 
-def selector_vista(entidades, dp, key):
+def selector_vista(entidades, dp, key, fila=None):
     """Selección de uno o varios productos (se superponen en los gráficos). Devuelve una lista; la elección se
-    comparte entre páginas."""
+    comparte entre páginas. Con `fila`, va como etiqueta compacta."""
     entidades = list(entidades)
     if len(entidades) <= 1:
         return entidades
@@ -597,11 +599,17 @@ def selector_vista(entidades, dp, key):
     kw_sel = f"_vs_{key}"
     st.session_state[kw_sel] = previa
     etiqueta = f"{mayus(nombre_entidad(dp))}"
-    if len(entidades) <= MAX_BOTONES:
-        st.pills(etiqueta, entidades, selection_mode="multi", key=kw_sel, on_change=_sync_vista, args=(kw_sel,))
-    else:
-        st.multiselect(etiqueta, entidades, key=kw_sel, max_selections=MAX_SERIES, on_change=_sync_vista,
-                       args=(kw_sel,), placeholder=f"Elige hasta {MAX_SERIES}")
+    caja = chip(fila, f"{etiqueta}: {titulo_seleccion(previa, dp)}", f"vista_{key}") if fila is not None else None
+    with caja if caja is not None else st.container():
+        if len(entidades) <= MAX_BOTONES:
+            st.pills(etiqueta, entidades, selection_mode="multi", key=kw_sel, on_change=_sync_vista, args=(kw_sel,),
+                     label_visibility="collapsed" if caja is not None else "visible")
+        else:
+            st.multiselect(etiqueta, entidades, key=kw_sel, max_selections=MAX_SERIES, on_change=_sync_vista,
+                           args=(kw_sel,), placeholder=f"Elige hasta {MAX_SERIES}",
+                           label_visibility="collapsed" if caja is not None else "visible")
+        if caja is not None:
+            st.caption("Elige uno o varios para compararlos en el gráfico.")
     elegidas = [e for e in entidades if e in (st.session_state.get(kw_sel) or [])]
     if not elegidas:
         st.caption(f":material/info: Elige al menos {un_entidad(dp)}. Mientras tanto se muestra el primero.")
@@ -620,20 +628,40 @@ def titulo_seleccion(sel, dp):
 MAX_BOTONES = 12   # con más opciones que esto, los botones no caben y se usa una lista desplegable
 
 
-def chip_opcion(contenedor, prefijo, opciones, estado, key, icono=None):
+def fila_chips(key):
+    """Fila de etiquetas compactas (estándar de controles sobre cada gráfico)."""
+    return st.container(horizontal=True, vertical_alignment="center", gap="small", key=f"fila_{key}")
+
+
+def chip(fila, etiqueta, key, icono=None):
+    """Etiqueta compacta que despliega su contenido: `with S.chip(fila, "Meta: $1M", "meta"): ...`."""
+    with fila.container(key=f"chip_{key}", width="content"):
+        return st.popover(etiqueta, icon=icono, width="content")
+
+
+def chip_texto(fila, texto, aviso=False):
+    fila.markdown(f'<span class="chip-texto{" aviso" if aviso else ""}">{texto}</span>', unsafe_allow_html=True)
+
+
+def chip_opcion(contenedor, prefijo, opciones, estado, key, icono=None, formato=None, defecto=None):
     """Etiqueta compacta que despliega las opciones (mismo estilo que el horizonte del pronóstico)."""
     opciones = list(opciones)
     if st.session_state.get(estado) not in opciones:
-        st.session_state[estado] = opciones[0]
+        st.session_state[estado] = defecto if defecto in opciones else opciones[0]
     kw = f"_chip_{key}"
     st.session_state[kw] = st.session_state[estado]
+    fmt = formato or str
 
     def _sync():
-        st.session_state[estado] = st.session_state[kw]
+        if st.session_state.get(kw) is not None:
+            st.session_state[estado] = st.session_state[kw]
 
-    with contenedor.container(key=f"chip_{key}", width="content"), st.popover(
-            f"{prefijo}{st.session_state[estado]}", icon=icono, width="content"):
-        st.radio(prefijo.strip(": ") or "Opción", opciones, key=kw, on_change=_sync, label_visibility="collapsed")
+    with chip(contenedor, f"{prefijo}{fmt(st.session_state[estado])}", key, icono):
+        nombre = prefijo.strip(": ") or "Opción"
+        if len(opciones) > 8:
+            st.selectbox(nombre, opciones, key=kw, on_change=_sync, format_func=fmt, label_visibility="collapsed")
+        else:
+            st.radio(nombre, opciones, key=kw, on_change=_sync, format_func=fmt, label_visibility="collapsed")
     return st.session_state[estado]
 
 
@@ -665,12 +693,20 @@ def elegir_uno(etiqueta, opciones, key, estado, defecto=None, formato=None):
     return st.session_state[estado]
 
 
-def selector_entidad(entidades, dp, key="ent"):
-    """Selector de una sola entidad, visible en la página. Comparte la elección con los selectores múltiples."""
+def selector_entidad(entidades, dp, key="ent", fila=None):
+    """Selector de una sola entidad. Con `fila`, va como etiqueta compacta. Comparte la elección con los
+    selectores múltiples."""
     entidades = list(entidades)
     previa = [e for e in st.session_state.get("vista_sel", []) if e in entidades]
     defecto = previa[0] if previa else (_por_volumen(dp, entidades)[:1] or [None])[0]
-    ent = elegir_uno(mayus(nombre_entidad(dp)), entidades, key=key, estado="entidad", defecto=defecto)
+    if fila is not None:
+        if len(entidades) == 1:
+            ent = entidades[0]
+        else:
+            ent = chip_opcion(fila, f"{mayus(nombre_entidad(dp))}: ", entidades, estado="entidad", key=f"ent_{key}",
+                              defecto=defecto)
+    else:
+        ent = elegir_uno(mayus(nombre_entidad(dp)), entidades, key=key, estado="entidad", defecto=defecto)
     if ent not in st.session_state.get("vista_sel", []):
         st.session_state["vista_sel"] = [ent]
     return ent

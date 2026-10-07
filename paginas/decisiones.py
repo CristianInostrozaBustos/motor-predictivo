@@ -39,32 +39,35 @@ for e in entidades:
 vista = S.vista("decisiones")
 E.titulo_compacto("Decisiones de abastecimiento", S.etiqueta_vista(vista))
 
-# ---------------------------------------------------------------- producto y panel de control (sobre el gráfico)
-ent = S.selector_entidad(entidades, dp, key="dec")
+# ---------------------------------------------------------------- controles en etiquetas compactas (sobre el gráfico)
+fila = S.fila_chips("dec")
+ent = S.selector_entidad(entidades, dp, key="dec", fila=fila)
 de_ent = f" de {ent}" if len(entidades) > 1 else ""
 de_ent_html = f" de <b>{ent}</b>" if len(entidades) > 1 else ""
-with st.container(border=True, key="panel_control_dec"):
-    c1, c2, c3, c4 = st.columns(4, vertical_alignment="bottom")
-    nivel = c1.select_slider("Nivel de servicio", list(P.Z_NIVEL), value=(guardada or {}).get("nivel", "90%"),
-                             key="dec_nivel", help="Probabilidad de no quedarse sin stock mientras llega un pedido.")
-    rev_def = {"D": 30, "W": 28, "M": 30, "Q": 91}[dp.config.frecuencia]
-    revision = c2.number_input("Días que cubre cada pedido", 1, 365, int((guardada or {}).get("revision", rev_def)),
-                               key="dec_revision",
+ss = st.session_state
+nivel_def = (guardada or {}).get("nivel", "90%")
+with S.chip(fila, f"Nivel de servicio: {ss.get('dec_nivel', nivel_def)}", "dec_nivel"):
+    nivel = st.select_slider("Nivel de servicio", list(P.Z_NIVEL), value=nivel_def, key="dec_nivel",
+                             help="Probabilidad de no quedarse sin stock mientras llega un pedido.")
+rev_def = int((guardada or {}).get("revision", {"D": 30, "W": 28, "M": 30, "Q": 91}[dp.config.frecuencia]))
+with S.chip(fila, f"Cada pedido: {E.num(ss.get('dec_revision', rev_def))} días", "dec_revision"):
+    revision = st.number_input("Días que cubre cada pedido", 1, 365, rev_def, key="dec_revision",
                                help="Como mínimo se usa el lead time + 20%, para que llegue un pedido antes de "
                                     "necesitar el siguiente.")
-    lt_e = c3.number_input(f"Lead time{de_ent} (días)", 0.0, 365.0, param[ent]["lt"], 1.0, format="%.1f",
-                           key=f"lt_{clave}_{ent}")
-    inv_e = c4.number_input(f"Inventario actual{de_ent}", 0.0, None,
-                            None if pd.isna(param[ent]["inv"]) else float(param[ent]["inv"]), 100.0,
-                            format="%.0f", key=f"inv_{clave}_{ent}", placeholder="Ingrésalo")
-    if not tiene_lt or not tiene_inv:
-        st.caption(":material/info: Tu archivo no trae " + " ni ".join(
-            x for x, falta in (("lead time", not tiene_lt), ("inventario", not tiene_inv)) if falta)
-            + ": complétalo aquí" + (" para cada " + S.nombre_entidad(dp) if len(entidades) > 1 else "") + ".")
-    if ent in inv_vivo and inv_e is not None and abs(inv_e - inv_vivo[ent][0]) < 1e-9:
-        st.caption(f":material/sensors: Inventario{de_ent} recibido en vivo el "
-                   f"{pd.Timestamp(inv_vivo[ent][1]).strftime('%d/%m/%Y')}.")
-    panel = st.container()
+k_lt, k_inv = f"lt_{clave}_{ent}", f"inv_{clave}_{ent}"
+with S.chip(fila, f"Lead time: {E.num(ss.get(k_lt, param[ent]['lt']), 1)} días" + ("" if tiene_lt else " (supuesto)"),
+            "dec_lt"):
+    lt_e = st.number_input(f"Lead time{de_ent} (días)", 0.0, 365.0, param[ent]["lt"], 1.0, format="%.1f", key=k_lt,
+                           help=None if tiene_lt else "Tu archivo no trae lead time: ajústalo aquí.")
+inv_def = None if pd.isna(param[ent]["inv"]) else float(param[ent]["inv"])
+inv_txt = ss.get(k_inv, inv_def)
+en_vivo = ent in inv_vivo and inv_txt is not None and abs(inv_txt - inv_vivo[ent][0]) < 1e-9
+with S.chip(fila, f"Inventario: {E.num(inv_txt)} u." if inv_txt is not None else "Inventario: ingrésalo", "dec_inv",
+            icono=":material/sensors:" if en_vivo else (None if inv_txt is not None else ":material/edit:")):
+    inv_e = st.number_input(f"Inventario actual{de_ent}", 0.0, None, inv_def, 100.0, format="%.0f", key=k_inv,
+                            placeholder="Ingrésalo")
+    if en_vivo:
+        st.caption(f":material/sensors: Recibido en vivo el {pd.Timestamp(inv_vivo[ent][1]).strftime('%d/%m/%Y')}.")
 ajustes[ent] = {"lt": float(lt_e), "inv": np.nan if inv_e is None else float(inv_e)}
 param[ent] = {"lt": float(lt_e), "inv": ajustes[ent]["inv"]}
 
@@ -183,7 +186,7 @@ if vista == "Todos los productos":
     S.panel_dataset(compacto=True)
     st.stop()
 if d.inventario is None:
-    E.nota(f"Ingresa el inventario actual{de_ent_html} en el panel de arriba para ver la proyección "
+    E.nota(f"Ingresa el inventario actual{de_ent_html} en <b>Inventario</b> (arriba) para ver la proyección "
            "y la fecha del próximo pedido.")
     if vista == "Detalle técnico":
         detalle_tecnico()
@@ -226,24 +229,28 @@ else:
     f0 = sug_ped["fecha"].iloc[0] if len(sug_ped) else pr["fecha"].iloc[0]
     q0 = float(sug_ped["pedido"].iloc[0]) if len(sug_ped) else 0.0
     clave_plan = f"{clave}_{ent}"
-    with panel:
-        costo = cc_ent
-        t1, t2, t3, t4 = st.columns(4, vertical_alignment="bottom")
-        with t1:
-            por = S.elegir_uno("Defino la compra en", ["Unidades", "Pesos ($)"], key="por",
-                               estado="plan_por") if costo else "Unidades"
+    costo = cc_ent
+    fila2 = S.fila_chips("dec_compra")
+    S.chip_texto(fila2, "Tu compra:")
+    por = ss.get("plan_por", "Unidades") if costo else "Unidades"
+    k_q, k_m, k_f, k_l = (f"q_{clave_plan}", f"m_{clave_plan}", f"fecha_{clave_plan}", f"ltc_{clave_plan}")
+    etiqueta_q = (f"{E.num(ss.get(k_q, float(round(q0))))} u." if por == "Unidades"
+                  else E.clp_corto(ss.get(k_m, float(round(q0 * costo)))))
+    with S.chip(fila2, f"Cantidad: {etiqueta_q}", "dec_q"):
+        if costo:
+            por = S.elegir_uno("Defino la compra en", ["Unidades", "Pesos ($)"], key="por", estado="plan_por")
         if por == "Unidades":
-            q = t2.number_input("Cantidad a comprar (u.)", 0.0, None, float(round(q0)),
-                                100.0, format="%.0f", key=f"q_{clave_plan}")
+            q = st.number_input("Cantidad a comprar (u.)", 0.0, None, float(round(q0)), 100.0, format="%.0f", key=k_q)
         else:
-            monto = t2.number_input("Monto a gastar ($)", 0.0, None,
-                                    float(round(q0 * costo)), 10000.0, format="%.0f", key=f"m_{clave_plan}")
+            monto = st.number_input("Monto a gastar ($)", 0.0, None, float(round(q0 * costo)), 10000.0, format="%.0f",
+                                    key=k_m)
             q = float(np.floor(monto / costo))
-        fecha_c = t3.date_input("Fecha de la compra", f0.date(), min_value=pr["fecha"].iloc[0].date(),
-                                max_value=pr["fecha"].iloc[-1].date(), format="DD/MM/YYYY", key=f"fecha_{clave_plan}")
-        lt_c = t4.number_input("Lead time de esta compra", 0.0, 365.0, float(round(d.L * dias_p, 1)), 1.0,
-                               format="%.1f", key=f"ltc_{clave_plan}",
-                               help="Cámbialo para simular, por ejemplo, una compra urgente.")
+    with S.chip(fila2, f"Fecha: {ss.get(k_f, f0.date()):%d/%m/%Y}", "dec_fecha"):
+        fecha_c = st.date_input("Fecha de la compra", f0.date(), min_value=pr["fecha"].iloc[0].date(),
+                                max_value=pr["fecha"].iloc[-1].date(), format="DD/MM/YYYY", key=k_f)
+    with S.chip(fila2, f"Llega en: {E.num(ss.get(k_l, float(round(d.L * dias_p, 1))), 1)} días", "dec_ltc"):
+        lt_c = st.number_input("Lead time de esta compra (días)", 0.0, 365.0, float(round(d.L * dias_p, 1)), 1.0,
+                               format="%.1f", key=k_l, help="Cámbialo para simular, por ejemplo, una compra urgente.")
 
     t_c = int(np.searchsorted(pr["fecha"].dt.normalize().to_numpy(), np.datetime64(pd.Timestamp(fecha_c))))
     t_c = min(t_c, len(pr) - 1)

@@ -26,6 +26,13 @@ NINGUNA = "(no tiene)"
 columnas = list(df.columns)
 problemas = not det.roles.get("fecha") or not det.roles.get("objetivo")
 roles = {}
+
+
+def _ini(clave, valor, neutro):
+    """Valor inicial del widget; si la clave ya viene de un análisis guardado, se usa el neutro (evita el aviso)."""
+    return neutro if clave in st.session_state else valor
+
+
 with st.expander("Revisar columnas detectadas", icon=":material/view_column:", expanded=problemas):
     for a in det.advertencias:
         st.warning(a, icon=":material/warning:")
@@ -34,7 +41,8 @@ with st.expander("Revisar columnas detectadas", icon=":material/view_column:", e
         opciones = ([NINGUNA] if rol == "entidad" else []) + columnas
         d = det.roles.get(rol)
         sel = col.selectbox(D.ROLES[rol]["etiqueta"], opciones,
-                            index=opciones.index(d) if d in opciones else (0 if rol == "entidad" else None),
+                            index=_ini(f"rol_{rol}_{k}", opciones.index(d) if d in opciones else
+                                       (0 if rol == "entidad" else None), 0),
                             key=f"rol_{rol}_{k}", placeholder="Elige una columna")
         roles[rol] = None if sel == NINGUNA else sel
     nombre_serie = ""
@@ -49,14 +57,16 @@ with st.expander("Revisar columnas detectadas", icon=":material/view_column:", e
     for i, rol in enumerate(["precio", "promocion", "lead_time", "inventario", "quiebre", "costo_unitario"]):
         opciones = [NINGUNA] + columnas
         d = det.roles.get(rol)
-        sel = cols[i % 3].selectbox(D.ROLES[rol]["etiqueta"], opciones, index=opciones.index(d) if d in opciones else 0,
+        sel = cols[i % 3].selectbox(D.ROLES[rol]["etiqueta"], opciones,
+                                    index=_ini(f"rol_{rol}_{k}", opciones.index(d) if d in opciones else 0, 0),
                                     key=f"rol_{rol}_{k}")
         roles[rol] = None if sel == NINGUNA else sel
     asignadas = {v for v in roles.values() if v}
     candidatas = [c for c in columnas if c not in asignadas and pd.api.types.is_numeric_dtype(df[c])
                   and not D.es_derivada_de_fecha(c)]
     exogenas = st.multiselect("Otras variables que influyen en la demanda", candidatas,
-                              default=[c for c in det.exogenas if c in candidatas], key=f"exog_{k}",
+                              default=_ini(f"exog_{k}", [c for c in det.exogenas if c in candidatas], None),
+                              key=f"exog_{k}",
                               format_func=D.nombre_legible,
                               placeholder="Ninguna",
                               help="Por ejemplo clima, tráfico o un índice de mercado.")
@@ -68,12 +78,13 @@ with st.expander("Revisar columnas detectadas", icon=":material/view_column:", e
         freq_det, finfo = D.detectar_frecuencia(fechas_tmp, df[roles["entidad"]] if roles.get("entidad") else None)
     a1, a2, a3 = st.columns(3)
     codigos = list(D.FRECUENCIAS)
-    frecuencia = a1.selectbox("Agrupar los datos por", codigos, index=codigos.index(freq_det), key=f"freq_{k}",
+    frecuencia = a1.selectbox("Agrupar los datos por", codigos, index=_ini(f"freq_{k}", codigos.index(freq_det), 0),
+                              key=f"freq_{k}",
                               format_func=lambda c: D.FRECUENCIAS[c]["unidad"].capitalize())
     relleno = a2.selectbox("Períodos sin registro", ["interpolar", "cero"], key=f"relleno_{k}",
-                           index=1 if finfo["frac_duplicadas"] > 0.2 else 0,
+                           index=_ini(f"relleno_{k}", 1 if finfo["frac_duplicadas"] > 0.2 else 0, 0),
                            format_func=lambda x: {"interpolar": "Faltan datos (interpolar)", "cero": "No hubo ventas (cero)"}[x])
-    negativos = a3.toggle("Tratar negativos como cero", value=True, key=f"neg_{k}")
+    negativos = a3.toggle("Tratar negativos como cero", value=_ini(f"neg_{k}", True, False), key=f"neg_{k}")
     suavizar = S.SUAVIZAR_PICOS_DEFECTO
 
 repetidas = [c for c in asignadas if list(roles.values()).count(c) > 1]
@@ -122,15 +133,16 @@ n_ent = dp.df["entidad"].nunique()
 f0, f1 = dp.df["fecha"].min(), dp.df["fecha"].max()
 datos_fr = {"diaria": "diarios", "semanal": "semanales", "mensual": "mensuales",
             "trimestral": "trimestrales"}.get(fi["nombre"], fi["nombre"])
-st.markdown(
-    f'<div class="resumen-chips"><span><b>{E.num(n_ent)}</b> {S.nombre_entidad(dp, n_ent != 1)}</span>'
+fila = S.fila_chips("datos")
+fila.markdown(
+    f'<div class="resumen-chips" style="margin:0"><span><b>{E.num(n_ent)}</b> {S.nombre_entidad(dp, n_ent != 1)}</span>'
     f'<span>Historial <b>{f0:%m/%Y} – {f1:%m/%Y}</b></span>'
     f'<span title="Frecuencia detectada en tu archivo">Datos <b>{datos_fr}</b></span></div>',
-    unsafe_allow_html=True)
+    unsafe_allow_html=True, width="content")
 
 with st.container(border=True):
     todas = sorted(dp.df["entidad"].unique())
-    sel = S.selector_vista(todas, dp, key="datos")
+    sel = S.selector_vista(todas, dp, key="datos", fila=fila)
     fig = go.Figure()
     for e in sel:
         g = dp.df[dp.df["entidad"] == e]
@@ -173,7 +185,7 @@ if plan.entidades_excluidas:
 _, res = S.resultado()
 if res is not None:
     S.actualizar_registro(config=st.session_state["config_actual"])
-st.page_link("paginas/pronostico.py", label="Ver pronóstico" if res is not None else "Siguiente: generar el pronóstico",
-             icon=":material/arrow_forward:")
+else:
+    st.page_link("paginas/pronostico.py", label="Siguiente: generar el pronóstico", icon=":material/arrow_forward:")
 
 S.panel_dataset()

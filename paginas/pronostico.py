@@ -24,7 +24,11 @@ if not plan.viable:
 UNIDADES, DINERO = "Unidades", "Ingresos ($)"
 
 
+FILA = {}
+
+
 def _chip_unidades(fila):
+    FILA["fila"] = fila
     if S.vista("pronostico") != "Precisión" and S.hay_precios():
         S.chip_opcion(fila, "Ver: ", [UNIDADES, DINERO], estado="ver_en", key="unid_pron")
 
@@ -44,7 +48,7 @@ met = res.metricas_entidad.set_index("entidad")
 
 if vista == "Prueba con datos pasados":
     con_bt = [e for e in entidades if e in res.backtest]
-    prueba = S.selector_entidad(con_bt, dp, key="bt")
+    prueba = S.selector_entidad(con_bt, dp, key="bt", fila=FILA.get("fila"))
     bt = res.backtest[prueba]
     temporada = {"D": "la última semana", "W": "el mismo período del año anterior",
                  "M": "el mismo mes del año anterior", "Q": "el mismo trimestre del año anterior"}[dp.config.frecuencia]
@@ -74,7 +78,7 @@ if vista == "Prueba con datos pasados":
                f"referencia sin modelo: repetir {temporada} conocida antes de la prueba. Si la línea azul queda "
                "más cerca de la negra que la naranja, el modelo aporta.")
 else:
-    sel = S.selector_vista(entidades, dp, key="pron")
+    sel = S.selector_vista(entidades, dp, key="pron", fila=FILA.get("fila"))
     ver = list(sel)
 
     # ------------------------------------------------------------ panel de control
@@ -172,7 +176,9 @@ else:
 todo = pd.concat([f.assign(entidad=e) for e, f in fut.items()])
 todo = todo[["entidad", "fecha", "P50", "P10", "P90"]].rename(columns={
     "entidad": S.mayus(S.nombre_entidad(dp)), "fecha": "Fecha", "P50": "Pronóstico",
-    "P10": "Escenario bajo (P10)", "P90": "Escenario alto (P90)"}).round(1)
+    "P10": "Escenario bajo (P10)", "P90": "Escenario alto (P90)"})
+todo[["Pronóstico", "Escenario bajo (P10)", "Escenario alto (P90)"]] = todo[
+    ["Pronóstico", "Escenario bajo (P10)", "Escenario alto (P90)"]].round(1)
 todo["Fecha"] = todo["Fecha"].dt.date
 with st.container(horizontal=True, horizontal_alignment="right"):
     st.download_button("Descargar pronóstico (Excel)", E.excel_bytes({"Pronóstico": todo}),

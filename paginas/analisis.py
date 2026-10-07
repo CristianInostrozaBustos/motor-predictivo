@@ -28,7 +28,7 @@ if not dp.tiene("promocion"):
 if not (dp.tiene("quiebre") or dp.tiene("inventario")):
     no_disp.append("quiebres de stock (requiere inventario o quiebre)")
 if no_disp:
-    st.caption(":material/info: También disponible con más columnas: " + "; ".join(no_disp) + ".")
+    st.caption(":material/info: Con más columnas también verías: " + "; ".join(no_disp) + ".")
 
 ents = sorted(df["entidad"].unique())
 
@@ -39,7 +39,7 @@ def colores(lista):
 
 # ---------------------------------------------------------------- estacionalidad
 if "Estacionalidad" in elegidas:
-    sel = S.elegir_uno(nom, ents, key="est", estado="entidad") if n_ent > 1 else ents[0]
+    sel = S.selector_entidad(ents, dp, key="est", fila=S.fila_chips("analisis")) if n_ent > 1 else ents[0]
     sub = df[df["entidad"] == sel]
     serie = sub.groupby("fecha")["objetivo"].sum()
     cols = st.columns(2 if dp.config.frecuencia == "D" else 1)
