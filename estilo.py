@@ -496,8 +496,7 @@ def grafico(fig, key=None, alto=None, icono=None, ir_a=None, eje_entidad=None):
     with st.container(key=f"tarjeta_{'ir_' if ir_a else ''}{clave}"):
         if titulo or ir_a:
             with st.container(horizontal=True, vertical_alignment="center", gap="small", key=f"cab_{clave}"):
-                st.markdown(f":material/{icono or _icono_figura(fig)}: " + (titulo or "").replace("$", "\\$"),
-                            width="stretch")
+                st.markdown((titulo or "").replace("$", "\\$"), width="stretch")
                 if ir_a and st.button("", icon=":material/arrow_forward:", type="tertiary", key=f"ir_{clave}",
                                       help="Ver el detalle"):
                     _ir_a_vista(*ir_a)
