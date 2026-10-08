@@ -657,9 +657,15 @@ def _sync_puntos(opciones, estado, key, al_cambiar):
         al_cambiar(antes, ahora)
 
 
-def _marcar_todos(opciones, estado, al_cambiar, todos):
+def _sync_all(opciones, estado, key, al_cambiar):
+    """ALL marcado: todo seleccionado (se recuerda la selección previa). Desmarcado: vuelve la previa."""
     antes = list(st.session_state.get(estado) or [])
-    ahora = list(opciones) if todos else antes[:1]
+    if st.session_state.get(f"_pm_{key}_all"):
+        st.session_state[f"_previa_{key}"] = antes
+        ahora = list(opciones)
+    else:
+        previa = [o for o in st.session_state.get(f"_previa_{key}", []) if o in opciones]
+        ahora = previa if previa and len(previa) < len(opciones) else list(opciones)[:1]
     st.session_state[estado] = ahora
     if al_cambiar:
         al_cambiar(antes, ahora)
@@ -667,19 +673,15 @@ def _marcar_todos(opciones, estado, al_cambiar, todos):
 
 def puntos_multi(opciones, estado, key, formato=None, maximo=None, al_cambiar=None, con_todos=False):
     """Selección múltiple con el mismo aspecto de la lista de puntos: cada punto se marca o desmarca solo.
-    Con listas largas aparecen "Todos" y "Solo uno". La elección queda en session_state[estado] (lista)."""
+    Con listas largas, el primer punto es ALL. La elección queda en session_state[estado] (lista)."""
     opciones = list(opciones)
     fmt = formato or str
     sel = [o for o in (st.session_state.get(estado) or []) if o in opciones]
     st.session_state[estado] = sel
-    if con_todos and len(opciones) > 3:
-        with st.container(horizontal=True, gap="small", key=f"todos_{key}"):
-            st.button("Todos", key=f"_todos_{key}", type="tertiary",
-                      on_click=_marcar_todos, args=(opciones, estado, al_cambiar, True),
-                      disabled=len(sel) == len(opciones))
-            st.button("Solo uno", key=f"_uno_{key}", type="tertiary",
-                      on_click=_marcar_todos, args=(opciones, estado, al_cambiar, False), disabled=len(sel) <= 1)
     with st.container(key=f"puntos_{key}", gap=None):
+        if con_todos and len(opciones) > 3:
+            st.session_state[f"_pm_{key}_all"] = len(sel) == len(opciones)
+            st.checkbox("ALL", key=f"_pm_{key}_all", on_change=_sync_all, args=(opciones, estado, key, al_cambiar))
         for i, o in enumerate(opciones):
             kw = f"_pm_{key}_{i}"
             st.session_state[kw] = o in sel
@@ -705,7 +707,7 @@ def selector_vista(entidades, dp, key, fila=None):
     st.session_state[kw_sel] = previa
     etiqueta = f"{mayus(nombre_entidad(dp))}"
     if fila is not None:
-        texto = f"Todos ({len(entidades)})" if len(previa) == len(entidades) else titulo_seleccion(previa, dp)
+        texto = f"ALL ({len(entidades)})" if len(previa) == len(entidades) else titulo_seleccion(previa, dp)
         with chip(fila, f"{etiqueta}: {texto}", f"vista_{key}"):
             puntos_multi(entidades, "vista_sel", key=f"vs_{key}", al_cambiar=_activa_ultima, con_todos=True)
         st.session_state[kw_sel] = st.session_state["vista_sel"]
