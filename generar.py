@@ -41,16 +41,40 @@ def bloque_horizonte(dp, plan, extra=None):
             if S.modo_dev():
                 st.warning(aviso, icon=":material/cloud_off:")
         return
-    with st.container(border=True):
-        h = st.slider(f"{fi['unidad_pl'].capitalize()} hacia adelante", 1, plan.horizonte_max, h_prev,
-                      key=f"h_{clave}")
-        st.caption(f"Hasta {plan.horizonte_max} {fi['unidad_pl']} según el historial disponible. "
-                   f"El pronóstico empieza el {inicio:%d/%m/%Y}.")
+    k_h = f"h_{clave}"
+    off = pd.tseries.frequencies.to_offset(D.FRECUENCIAS[dp.config.frecuencia]["pandas"])
+
+    def _fijar(valor):
+        st.session_state[k_h] = valor
+
+    if k_h not in st.session_state:
+        st.session_state[k_h] = h_prev
+    with st.container(key="tarjeta_generar"):
+        h_txt = int(st.session_state[k_h])
+        fin = inicio + off * (h_txt - 1)
+        st.markdown(f'<div class="gen-num">{h_txt}<span>{fi["unidad_pl"] if h_txt != 1 else fi["unidad"]} hacia '
+                    f'adelante</span></div><div class="gen-rango">Del {inicio:%d/%m/%Y} al {fin:%d/%m/%Y}</div>',
+                    unsafe_allow_html=True)
+        h = st.slider(f"{fi['unidad_pl'].capitalize()} hacia adelante", 1, plan.horizonte_max, key=k_h,
+                      label_visibility="collapsed")
+        rapidos = sorted({v for v in {"D": (30, 90, 180), "W": (4, 12, 26), "M": (3, 6, 12), "Q": (2, 4, 8)}.get(
+            dp.config.frecuencia, (4, 12)) if v <= plan.horizonte_max} | {plan.horizonte_max})
+        with st.container(horizontal=True, gap="small", key="gen_rapidos"):
+            for v in rapidos[-3:]:
+                st.button(f"{v} {fi['unidad_pl'] if v != 1 else fi['unidad']}", key=f"gen_r_{v}",
+                          type="primary" if v == h else "secondary", on_click=_fijar, args=(v,))
         if S.trabajo_activo() is not None:
             st.caption(":material/cloud_sync: Generando en segundo plano")
             return
         fondo = S.segundo_plano_disponible() and not S.modelo_guardado(clave)
-        generar = st.button("Generar pronóstico", type="primary", icon=":material/auto_graph:")
+        with st.container(horizontal=True, vertical_alignment="center", gap="medium", key="gen_accion"):
+            generar = st.button("Generar pronóstico", type="primary", icon=":material/auto_awesome:", key="btn_generar")
+            if S.modelo_guardado(clave):
+                st.caption("Ya analizado antes: sale al instante")
+            elif fondo:
+                st.caption(":material/schedule: 3 a 8 minutos, en segundo plano")
+            else:
+                st.caption(":material/schedule: 1 a 4 minutos")
         if generar and fondo:
             st.session_state["horizonte"] = h
             err = S.guardar_pronostico_actual(sin_modelo=True)
@@ -67,9 +91,3 @@ def bloque_horizonte(dp, plan, extra=None):
             st.session_state["resultado"] = {"clave": clave, "res": res_nuevo, "origen": origen}
             st.session_state["horizonte"] = h
             st.rerun()
-        if S.modelo_guardado(clave):
-            st.caption(":material/bolt: Estos datos ya se analizaron antes: el pronóstico sale al instante.")
-        elif fondo:
-            st.caption(":material/cloud_sync: Se entrena en segundo plano (entre 3 y 8 minutos)")
-        else:
-            st.caption(":material/schedule: Toma entre 1 y 4 minutos según el tamaño de tus datos.")

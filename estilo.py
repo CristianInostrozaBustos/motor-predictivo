@@ -335,6 +335,19 @@ section[data-testid="stSidebar"] [data-testid="stVerticalBlock"] { gap: 0.35rem;
     box-shadow: 0 4px 14px rgba(229,72,77,0.30); }
 [class*="st-key-btn_siguiente"] button:hover { background: #d03b3b !important; border-color: #d03b3b !important; }
 [class*="st-key-btn_siguiente"] button p { color: #ffffff !important; font-weight: 650; font-size: .88rem; }
+[class*="st-key-tarjeta_generar"] { background: #ffffff; border: 1px solid rgba(11,11,11,0.07); border-radius: 16px;
+    padding: 30px 36px; max-width: 820px; box-shadow: 0 1px 3px rgba(11,11,11,0.05), 0 8px 24px rgba(11,11,11,0.05); }
+.gen-num { font-size: 4rem; font-weight: 800; color: #1c5cab; letter-spacing: -0.03em; line-height: 1; }
+.gen-num span { font-size: 1.35rem; color: #52514e; font-weight: 600; margin-left: 10px; letter-spacing: 0; }
+.gen-rango { color: #6b6a66; font-size: .9rem; margin: 8px 0 4px 2px; }
+[class*="st-key-gen_rapidos"] button { border-radius: 999px; padding: 4px 16px !important; min-height: 0 !important; }
+[class*="st-key-gen_rapidos"] button p { font-size: .88rem; font-weight: 600; }
+[class*="st-key-gen_rapidos"] button[kind="secondary"] p { color: #1c5cab; }
+[class*="st-key-gen_accion"] { margin-top: 14px; }
+[class*="st-key-btn_generar"] button { background: #e5484d !important; border-color: #e5484d !important; border-radius: 999px;
+    padding: 10px 24px !important; box-shadow: 0 6px 18px rgba(229,72,77,0.32); }
+[class*="st-key-btn_generar"] button:hover { background: #d03b3b !important; border-color: #d03b3b !important; }
+[class*="st-key-btn_generar"] button p { color: #fff !important; font-weight: 650; font-size: 1rem; }
 .kpis { display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 6px 2px 12px 2px; }
 .kpis .kpi { display: flex; align-items: baseline; gap: 6px; font-size: .82rem; color: #6b6a66; }
 .kpis .kpi b { color: #12305e; font-weight: 700; font-size: .92rem; }
