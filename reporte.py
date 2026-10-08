@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import io
 import os
+import re
 
 import matplotlib
 import numpy as np
@@ -290,6 +291,78 @@ def explicar_escenario(esc, d) -> str:
     return txt
 
 
+# ---------------------------------------------------------------- datos y borradores para la IA
+def _r(x, dec=1):
+    try:
+        if x is None or not np.isfinite(float(x)):
+            return None
+        return int(round(float(x))) if dec == 0 else round(float(x), dec)
+    except (TypeError, ValueError):
+        return None
+
+
+def compacto(d: dict) -> dict:
+    """Resumen sin tablas crudas: solo las cifras que explican el pronóstico."""
+    out = {
+        "unidad_de_tiempo": d["unidad_pl"], "horizonte": d["horizonte"], "cada_serie_es": d["entidad"],
+        "variable": d["objetivo"], "historial": f"{pd.Timestamp(d['hist_desde']):%d/%m/%Y} a "
+                                               f"{pd.Timestamp(d['hist_hasta']):%d/%m/%Y}",
+        "clima": ({"lugar": d["clima"], "ajusta_a": d["clima_usa"]} if d.get("clima") else None),
+        "series": [],
+    }
+    for p in d["productos"][:40]:
+        f = p["fut"]
+        i = int(f["P50"].to_numpy().argmax()) if len(f) else 0
+        out["series"].append({
+            "nombre": p["entidad"], "demanda_esperada": _r(p["total"], 0),
+            "rango_probable": [_r(p["total_p10"], 0), _r(p["total_p90"], 0)],
+            "mismo_largo_reciente": _r(p["anterior"], 0) if p["periodos_anterior"] == d["horizonte"] else None,
+            "error_modelo_pct": _r(p["wape"]), "error_repitiendo_temporada_pct": _r(p["wape_naive"]),
+            "reales_dentro_del_rango_pct": _r(p["cobertura"]),
+            "fecha_pico": f"{pd.Timestamp(f['fecha'].iloc[i]):%d/%m/%Y}" if len(f) else None,
+            "ajustado_por_clima": p["clima"], "periodos_de_historia": int(len(p["hist"])),
+        })
+    if len(d["productos"]) > 40:
+        out["series_omitidas"] = len(d["productos"]) - 40
+    if d.get("decisiones"):
+        dec = d["decisiones"]
+        out["inventario"] = {"nivel_servicio": dec["nivel"], "dias_por_pedido": dec["revision"], "series": [
+            {"nombre": f["entidad"], "estado": f["estado"], "inventario": _r(f["inventario"], 0),
+             "stock_seguridad": _r(f["ss"], 0), "punto_reorden": _r(f["rop"], 0), "pedido": _r(f["cantidad"], 0),
+             "fecha_pedido": f"{pd.Timestamp(f['fecha']):%d/%m/%Y}" if f["fecha"] is not None else None,
+             "dias_cubiertos": _r(f["cobertura"], 0), "lead_time_dias": _r(f["lead_time"])}
+            for f in dec["filas"][:40]]}
+    if d.get("ingresos"):
+        out["ingresos"] = [{"nombre": f["entidad"], "precio": _r(f["precio"], 0), "ingresos": _r(f["ingresos"], 0),
+                            "rango": [_r(f["ingresos_p10"], 0), _r(f["ingresos_p90"], 0)]}
+                           for f in d["ingresos"]["filas"][:40]]
+    if d.get("escenario"):
+        e = d["escenario"]
+        out["escenario"] = {"descripcion": e["descripcion"], "desde": f"{pd.Timestamp(e['desde']):%d/%m/%Y}",
+                            "hasta": f"{pd.Timestamp(e['hasta']):%d/%m/%Y}", "series": e["filas"]}
+    return out
+
+
+def borradores(d: dict) -> dict:
+    """Textos automáticos de cada sección incluida, sin marcas HTML."""
+    sec, b = d["secciones"], {}
+    if "Resumen" in sec:
+        b["resumen"] = explicar_resumen(d)
+    if "Pronóstico por producto" in sec:
+        for p in d["productos"][:MAX_GRAFICOS]:
+            b[f"producto:{p['entidad']}"] = explicar_producto(d, p)
+    if "Precisión" in sec:
+        b["precision"] = explicar_precision(d)
+    if d.get("decisiones") and "Decisiones de inventario" in sec:
+        b["decisiones"] = explicar_decisiones(d["decisiones"], d)
+    if d.get("ingresos") and "Ingresos proyectados" in sec:
+        b["ingresos"] = explicar_ingresos(d["ingresos"], d)
+    if d.get("escenario") and "Último escenario" in sec:
+        b["escenario"] = explicar_escenario(d["escenario"], d)
+    return {k: re.sub(r"<[^>]+>", "", v).replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">")
+            for k, v in b.items()}
+
+
 # ---------------------------------------------------------------- gráficos
 def _png(fig) -> io.BytesIO:
     b = io.BytesIO()
@@ -379,7 +452,7 @@ def _kpis(st_, pares):
 def construir_pdf(d: dict, textos: dict | None = None) -> bytes:
     """PDF del reporte. textos: párrafos alternativos por clave (resumen, precision, decisiones, ingresos,
     escenario, producto:<entidad>) para reemplazar los automáticos."""
-    textos = textos or {}
+    textos = {k: _t(v) for k, v in (textos or {}).items() if v}
     st_ = _estilos()
     sec = d["secciones"]
     buf = io.BytesIO()

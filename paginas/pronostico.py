@@ -1,3 +1,5 @@
+import html
+
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
@@ -47,6 +49,41 @@ nom_col = S.mayus(S.nombre_entidad(dp))
 met = res.metricas_entidad.set_index("entidad")
 
 
+def analisis_ia():
+    """Lectura del pronóstico redactada por IA: resumen y alertas sobre lo que conviene revisar."""
+    import reporte as RP
+    from motor import ia as IA
+    ss = st.session_state
+    firma = (S.clave_dataset(dp), H, str(pd.Timestamp.today().date()))
+    guardado = ss.setdefault("_ia_analisis", {})
+    with st.container(key="tarjeta_ia"):
+        with st.container(horizontal=True, vertical_alignment="center", key="cab_ia"):
+            st.markdown("**Análisis del pronóstico**", width="stretch")
+            pedir = st.button("Actualizar" if firma in guardado else "Analizar con IA", key="btn_ia_analizar",
+                              type="tertiary" if firma in guardado else "primary", icon=":material/auto_awesome:")
+        if pedir:
+            with st.spinner("Analizando..."):
+                try:
+                    guardado[firma] = IA.analizar(S.ia(), RP.compacto(
+                        RP.reunir(["Resumen", "Precisión", "Decisiones de inventario"])))
+                    ss.pop("_ia_error", None)
+                except IA.ErrorIA as e:
+                    ss["_ia_error"] = str(e)
+            st.rerun()
+        r = guardado.get(firma)
+        if ss.get("_ia_error"):
+            st.caption(ss["_ia_error"])
+        if r:
+            st.markdown(f'<div class="ia-resumen">{html.escape(r["resumen"])}</div>', unsafe_allow_html=True)
+            for a in r["alertas"]:
+                st.markdown(f'<div class="ia-alerta ia-{a["nivel"]}">{html.escape(a["texto"])}</div>',
+                            unsafe_allow_html=True)
+            if not r["alertas"]:
+                st.caption("Sin alertas: no hay nada fuera de lo normal.")
+        elif not ss.get("_ia_error"):
+            st.caption("Un resumen de lo principal y de lo que conviene revisar, a partir de los resultados.")
+
+
 def chip_reporte(fila_r):
     """Reporte PDF con lo pronosticado: gráficos, tablas y párrafos explicativos."""
     import reporte as RP
@@ -61,12 +98,26 @@ def chip_reporte(fila_r):
     with S.chip(fila_r, "Reporte PDF", "reporte"):
         st.caption("Elige qué incluir.")
         sel = [x for x in S.puntos_multi(disponibles, "rep_secciones", "rep") if x in disponibles]
-        firma = (S.clave_dataset(dp), H, tuple(sel), repr(esc.get("descripcion")) if esc else "")
+        cli = S.ia()
+        con_ia = bool(cli) and st.toggle("Redactar los textos con IA", value=True, key="rep_ia")
+        firma = (S.clave_dataset(dp), H, tuple(sel), repr(esc.get("descripcion")) if esc else "", con_ia)
         listo = ss.get("_rep_pdf") and ss["_rep_pdf"][0] == firma
         if not listo and st.button("Preparar reporte", type="primary", disabled=not sel, key="rep_preparar"):
+            from motor import ia as IA
             with st.spinner("Armando el reporte..."):
-                ss["_rep_pdf"] = (firma, RP.construir_pdf(RP.reunir(sel)))
+                d_rep = RP.reunir(sel)
+                textos = None
+                if con_ia:
+                    try:
+                        textos = IA.redactar_reporte(cli, RP.compacto(d_rep), RP.borradores(d_rep))
+                    except IA.ErrorIA as e:
+                        ss["_rep_aviso"] = f"{e} Se usaron los textos automáticos."
+                    else:
+                        ss.pop("_rep_aviso", None)
+                ss["_rep_pdf"] = (firma, RP.construir_pdf(d_rep, textos))
             listo = True
+        if listo and ss.get("_rep_aviso"):
+            st.caption(ss["_rep_aviso"])
         if listo:
             nombre = str(ss.get("nombre_dataset", "pronostico")).rsplit(".", 1)[0]
             st.download_button("Descargar PDF", ss["_rep_pdf"][1], file_name=f"reporte_{nombre}.pdf",
@@ -181,6 +232,8 @@ elif vista == "Resumen":
                           barmode="group", hovermode="closest", showlegend=False)
         E.grafico(fig, key="tab_error", alto=300, icono="target", ir_a=("pronostico", "Precisión"))
     kp.mostrar()
+    if S.ia() is not None:
+        analisis_ia()
 else:
     sel = S.selector_vista(entidades, dp, key="pron", fila=FILA.get("fila"))
     ver = list(sel)

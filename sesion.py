@@ -89,6 +89,26 @@ def preparar_dataset(df, roles, exogenas, frecuencia, relleno, negativos, suaviz
     return dp
 
 
+@st.cache_resource(show_spinner=False)
+def _cliente_ia(clave, rapido, asistente):
+    from motor import ia as IA
+    return IA.ClienteIA(clave, {"rapido": rapido, "asistente": asistente})
+
+
+def ia():
+    """Cliente de IA si hay clave en Secrets ([ia] api_key); si no, None y el sitio usa sus textos automáticos."""
+    try:
+        cfg = dict(st.secrets["ia"]) if "ia" in st.secrets else None
+    except Exception:  # noqa: BLE001  (sin archivo de secrets)
+        cfg = None
+    if not cfg or not cfg.get("api_key"):
+        return None
+    try:
+        return _cliente_ia(cfg["api_key"], cfg.get("modelo_rapido"), cfg.get("modelo_asistente"))
+    except Exception:  # noqa: BLE001  (paquete no instalado)
+        return None
+
+
 def clave_dataset(dp) -> str:
     from motor import servicio as Sv
     return Sv.clave_dataset(dp)

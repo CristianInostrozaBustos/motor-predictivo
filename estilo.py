@@ -341,6 +341,10 @@ section[data-testid="stSidebar"] [data-testid="stVerticalBlock"] { gap: 0.35rem;
     font-weight: 650; }
 body:has(.st-key-esc_desactualizado) :is([class*="st-key-tarjeta_"], .kpis, .nota, [data-testid="stDataFrame"]) {
     opacity: .4; transition: opacity .2s; }
+.ia-resumen { font-size: .92rem; line-height: 1.55; color: #1f2937; margin-bottom: 8px; }
+.ia-alerta { font-size: .86rem; line-height: 1.45; padding: 7px 12px; border-radius: 10px; margin: 4px 0;
+    border-left: 3px solid #e0a100; background: #fdf8ec; color: #3d3320; }
+.ia-alerta.ia-alta { border-left-color: #d03b3b; background: #fdf0f0; color: #4a1f1f; }
 [class*="st-key-tarjeta_generar"] { background: #ffffff; border: 1px solid rgba(11,11,11,0.07); border-radius: 16px;
     padding: 30px 36px; max-width: 820px; box-shadow: 0 1px 3px rgba(11,11,11,0.05), 0 8px 24px rgba(11,11,11,0.05); }
 .gen-num { font-size: 4rem; font-weight: 800; color: #1c5cab; letter-spacing: -0.03em; line-height: 1; }

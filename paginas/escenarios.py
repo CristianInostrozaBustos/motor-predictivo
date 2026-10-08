@@ -393,7 +393,7 @@ if vista_pag == "Demanda":
     fig.add_trace(go.Scatter(x=c.base["fecha"], y=c.base["P50"], name="Sin el evento", mode="lines",
                              line=dict(color=E.TINTA_MUTED, width=1.6, dash="dot"), hovertemplate="%{y:,.0f}"))
     precio_ent = S.precio(ent)
-    if precio_ent:
+    if precio_ent and abs(esc.cambio_precio()) > 1e-9:        # el precio solo se grafica si el evento lo cambia
         pv = X.precio_por_periodo(precio_ent, esc, len(c.base)) * S.factor_inflacion(c.base["fecha"])
         fig.add_trace(go.Scatter(x=c.base["fecha"], y=pv, name="Precio de venta", yaxis="y2", mode="lines",
                                  line=dict(color=E.AQUA, width=1.8, shape="hv"),
