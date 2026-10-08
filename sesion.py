@@ -58,6 +58,39 @@ def preparar_cacheado(df, roles_items, exogenas, frecuencia, relleno, negativos,
     return D.preparar(df, cfg)
 
 
+@st.cache_data(ttl=6 * 3600, show_spinner="Trayendo el clima...")
+def _clima_diario(lat, lon, desde, hasta, dia):
+    from motor import clima as C
+    return C.serie_diaria(lat, lon, pd.Timestamp(desde), pd.Timestamp(hasta))
+
+
+@st.cache_data(ttl=24 * 3600, show_spinner=False)
+def buscar_lugar(nombre):
+    from motor import clima as C
+    return C.buscar(nombre)
+
+
+def preparar_dataset(df, roles, exogenas, frecuencia, relleno, negativos, suavizar=SUAVIZAR_PICOS_DEFECTO, lugar=None):
+    """Prepara los datos y, si se eligió un lugar, agrega el clima como variable externa."""
+    from motor import clima as C
+    from motor import servicio as Sv
+    roles, exogenas, diaria = dict(roles), list(exogenas), None
+    st.session_state.pop("_clima_error", None)
+    if lugar:
+        try:
+            hoy = str(pd.Timestamp.today().date())
+            df, diaria = Sv.clima_para(df, roles, lugar, frecuencia,
+                                       obtener=lambda la, lo, d, h: _clima_diario(la, lo, str(d.date()), str(h.date()), hoy))
+            exogenas += [v for v in C.VARIABLES if v not in exogenas]
+        except Exception as e:  # noqa: BLE001
+            st.session_state["_clima_error"] = f"No se pudo traer el clima ({type(e).__name__}); se sigue sin él."
+    dp = preparar_cacheado(df, tuple(sorted(roles.items())), tuple(exogenas), frecuencia, relleno, negativos, suavizar)
+    if diaria is not None:
+        dp.clima_diaria, dp.clima_lugar = diaria, lugar.get("nombre", "")
+        C.usar_solo_si_influye(dp, frecuencia)
+    return dp
+
+
 def clave_dataset(dp) -> str:
     from motor import servicio as Sv
     return Sv.clave_dataset(dp)
@@ -183,6 +216,8 @@ def resultado():
     r = st.session_state.get("resultado")
     if dp is None or r is None or r["clave"] != clave_dataset(dp):
         return dp, None
+    if getattr(dp, "clima_diaria", None) is not None:      # el clima más reciente para pronosticar
+        r["res"].clima_diaria, r["res"].clima_freq = dp.clima_diaria, dp.config.frecuencia
     return dp, r["res"]
 
 
@@ -191,7 +226,7 @@ def horizonte():
 
 
 @st.cache_data(show_spinner="Calculando el pronóstico...", max_entries=20)
-def _pronostico_cacheado(clave, h, freq):
+def _pronostico_cacheado(clave, h, freq, dia=None):
     res = st.session_state["resultado"]["res"]
     from motor import modelo as M
     return M.pronosticar(res, h, freq)
@@ -201,7 +236,8 @@ def pronostico(h=None):
     dp, res = resultado()
     if res is None:
         return None
-    return _pronostico_cacheado(st.session_state["resultado"]["clave"], h or horizonte(), dp.config.frecuencia)
+    return _pronostico_cacheado(st.session_state["resultado"]["clave"], h or horizonte(), dp.config.frecuencia,
+                                str(pd.Timestamp.today().date()))
 
 
 @st.cache_data(show_spinner="Simulando el escenario...", max_entries=20)
@@ -922,9 +958,10 @@ def abrir_pronostico(reg, progreso=None):
     st.session_state[f"serie_{k}"] = cfg.get("nombre_serie") or ""
     st.session_state["_datos_preset"] = k
 
-    dp = preparar_cacheado(df, tuple(sorted(roles.items())), tuple(cfg.get("exogenas", [])), cfg.get("frecuencia", "D"),
-                           cfg.get("relleno", "interpolar"), cfg.get("negativos", True),
-                           cfg.get("suavizar_picos", SUAVIZAR_PICOS_DEFECTO))
+    st.session_state[f"clima_{k}"] = cfg.get("clima")
+    dp = preparar_dataset(df, roles, cfg.get("exogenas", []), cfg.get("frecuencia", "D"),
+                          cfg.get("relleno", "interpolar"), cfg.get("negativos", True),
+                          cfg.get("suavizar_picos", SUAVIZAR_PICOS_DEFECTO), lugar=cfg.get("clima"))
     st.session_state["dp"] = dp
     st.session_state["config_actual"] = cfg
     if cfg.get("inflacion"):

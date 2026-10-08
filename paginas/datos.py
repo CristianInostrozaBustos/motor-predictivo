@@ -105,9 +105,9 @@ if finfo.get("mediana_dias", 0) > 200:
              "mensuales o trimestrales.")
     st.stop()
 
+lugar_clima = st.session_state.get(f"clima_{k}")
 try:
-    dp = S.preparar_cacheado(df, tuple(sorted(roles.items())), tuple(exogenas), frecuencia, relleno, negativos,
-                             suavizar)
+    dp = S.preparar_dataset(df, roles, exogenas, frecuencia, relleno, negativos, suavizar, lugar=lugar_clima)
 except Exception as e:  # noqa: BLE001
     st.error(f"No pudimos preparar los datos: {e}")
     st.stop()
@@ -123,7 +123,8 @@ _planes_previos = (st.session_state.get("config_actual") or {}).get("planes") or
     ((S.registro_actual() or {}).get("config") or {}).get("planes")
 st.session_state["config_actual"] = dict(roles=roles, exogenas=list(exogenas), frecuencia=frecuencia, relleno=relleno,
                                          negativos=bool(negativos), nombre_serie=nombre_serie.strip(),
-                                         suavizar_picos=bool(suavizar), inflacion=S.config_inflacion())
+                                         suavizar_picos=bool(suavizar), inflacion=S.config_inflacion(),
+                                         clima=lugar_clima if getattr(dp, "clima_diaria", None) is not None else None)
 if _planes_previos:
     st.session_state["config_actual"]["planes"] = _planes_previos
 _lo = st.session_state.get("link_origen")
@@ -141,6 +142,50 @@ f0, f1 = dp.df["fecha"].min(), dp.df["fecha"].max()
 datos_fr = {"diaria": "diarios", "semanal": "semanales", "mensual": "mensuales",
             "trimestral": "trimestrales"}.get(fi["nombre"], fi["nombre"])
 fila = S.fila_chips("datos")
+
+
+def chip_clima():
+    """Lugar cuyo clima (temperatura y lluvia) entra al modelo como variable externa."""
+    ss = st.session_state
+    lugar = ss.get(f"clima_{k}")
+    with S.chip(fila, "Clima: " + (lugar["nombre"].split(",")[0] if lugar else "sin usar"), "clima"):
+        st.caption("La temperatura y la lluvia del lugar entran al modelo; el pronóstico usa el pronóstico del tiempo "
+                   "de los próximos 16 días y, más allá, el clima típico de esa fecha.")
+        texto = st.text_input("Ciudad o comuna", key=f"clima_txt_{k}", placeholder="Ej.: Santiago")
+        if texto.strip():
+            try:
+                lugares = S.buscar_lugar(texto.strip())
+            except Exception:  # noqa: BLE001
+                lugares = None
+                st.caption("No se pudo buscar en este momento.")
+            if lugares:
+                i = st.radio("Lugar", range(len(lugares)), format_func=lambda j: lugares[j]["nombre"],
+                             key=f"clima_sel_{k}", label_visibility="collapsed")
+                if st.button("Usar este lugar", type="primary", key=f"clima_usar_{k}"):
+                    ss[f"clima_{k}"] = lugares[i]
+                    st.rerun()
+            elif lugares is not None:
+                st.caption("Sin resultados.")
+        ef = getattr(dp, "clima_efecto", None)
+        if lugar and ef is not None:
+            rel = ef[ef["relevante"]]
+            if len(rel):
+                textos = []
+                for ent_c, g in rel.groupby("entidad"):
+                    partes = [("más" if r > 0 else "menos") + (" con calor" if v == "temperatura" else " con lluvia")
+                              for v, r in zip(g["variable"], g["r"])]
+                    textos.append(f"**{ent_c}**: vende {' y '.join(partes)}")
+                st.markdown("Efecto medido en tu historial:  \n" + "  \n".join(textos[:12]))
+            else:
+                st.caption("El clima no muestra un efecto claro en tus ventas, así que el modelo no lo usa.")
+        if lugar and st.button("Quitar el clima", key=f"clima_quitar_{k}"):
+            ss[f"clima_{k}"] = None
+            st.rerun()
+        if ss.get("_clima_error"):
+            st.caption(ss["_clima_error"])
+
+
+chip_clima()
 
 with st.container(border=True):
     todas = sorted(dp.df["entidad"].unique())
@@ -174,6 +219,17 @@ with st.container(border=True):
                 "Lo típico en esa fecha": dp.picos["tipico"].map(E.num),
                 "Veces lo típico": (dp.picos["valor"] / dp.picos["tipico"]).map(lambda v: E.num(v, 1) + "×"),
             }), hide_index=True, width="stretch")
+
+if getattr(dp, "clima_diaria", None) is not None:
+    cd = dp.clima_diaria.loc[f0 - pd.Timedelta(days=1):f1]
+    figc = go.Figure()
+    figc.add_trace(go.Bar(x=cd.index, y=cd["lluvia"], name="Lluvia (mm)", marker_color="rgba(42,120,214,0.35)",
+                          yaxis="y2", hovertemplate="%{y:.1f} mm"))
+    figc.add_trace(go.Scatter(x=cd.index, y=cd["temperatura"], name="Temperatura (°C)", mode="lines",
+                              line=dict(color=E.NARANJO, width=1.4), hovertemplate="%{y:.1f} °C"))
+    figc.update_layout(title=f"Clima · {dp.clima_lugar}", height=260, yaxis_title="°C",
+                       yaxis2=dict(overlaying="y", side="right", showgrid=False, title=dict(text="mm")))
+    E.grafico(figc, key="fig_clima")
 
 if not plan.viable:
     st.error(f"El historial es demasiado corto para pronosticar: se necesitan al menos "

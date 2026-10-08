@@ -176,11 +176,20 @@ for t in tipos or []:
         eventos.append(X.Evento("promocion", 1.0))
     elif t == "exogena":
         var_txt = ss.get("esc_var") if ss.get("esc_var") in otras else otras[0]
-        with S.chip(fila, f"{dp.etiquetas.get(var_txt, var_txt)}: {ss.get('esc_exo', 30):+d}%", "esc_exo"):
+        unidad_clima = {"temperatura": "°C", "lluvia": "mm por día"}.get(var_txt)
+        k_val = f"esc_exo_{var_txt}" if unidad_clima else "esc_exo"
+        defecto = {"temperatura": 3, "lluvia": 5}.get(var_txt, 30)
+        etiqueta = (f"{ss.get(k_val, defecto):+d} {unidad_clima.split()[0]}" if unidad_clima
+                    else f"{ss.get(k_val, defecto):+d}%")
+        with S.chip(fila, f"{dp.etiquetas.get(var_txt, var_txt)}: {etiqueta}", "esc_exo"):
             var = S.elegir_uno("Variable", otras, key="var", estado="esc_var",
                                formato=lambda v: dp.etiquetas.get(v, v))
-            v = st.slider("Cambio (%)", -60, 150, 30, 5, key="esc_exo")
-        eventos.append(X.Evento("exogena", v / 100, var))
+            if unidad_clima:
+                v = st.slider(f"Cambio ({unidad_clima})", -10 if var_txt == "temperatura" else 0,
+                              10 if var_txt == "temperatura" else 40, defecto, 1, key=k_val)
+            else:
+                v = st.slider("Cambio (%)", -60, 150, 30, 5, key=k_val)
+        eventos.append(X.Evento("exogena", float(v) if unidad_clima else v / 100, var))
 
 adelanto = {"D": pd.Timedelta(days=14), "W": pd.Timedelta(weeks=2), "M": pd.DateOffset(months=1), "Q": pd.DateOffset(months=3)}[freq]
 # el retraso solo se nota si el evento incluye un pedido: se sugiere empezar en el próximo pedido
@@ -243,6 +252,18 @@ if esc.desde >= H_an:
 
 base = S.pronostico(H_an)
 con_evento = S.pronostico_escenario(H_an, esc.cambios_modelo(), afectadas)
+# el clima mueve la demanda según el efecto medido en el historial de cada producto
+efecto_clima = getattr(dp, "clima_efecto", None)
+if any(ev.tipo == "exogena" and ev.var in X.VARIABLES_CLIMA for ev in esc.eventos):
+    con_evento = dict(con_evento)
+    for e in afectadas:
+        f_cl = esc.factor_clima(efecto_clima, e)
+        if f_cl != 1.0:
+            d_e = con_evento[e].copy()
+            sl = slice(esc.desde, min(esc.hasta, len(d_e)))
+            for q in ("P10", "P50", "P90"):
+                d_e.iloc[sl, d_e.columns.get_loc(q)] = d_e[q].iloc[sl] * f_cl
+            con_evento[e] = d_e
 comps = {}
 for e in afectadas:
     fila = tabla_pol.loc[e]
@@ -257,7 +278,8 @@ f_fin = base[afectadas[0]]["fecha"].iloc[min(esc.hasta, H_an) - 1]
 descripcion = " + ".join(
     {"demanda": f"demanda {ev.valor:+.0%}", "retraso": f"retraso de {ev.valor:.0f} días",
      "precio": f"precio {ev.valor:+.0%}", "promocion": "promoción",
-     "exogena": f"{dp.etiquetas.get(ev.var, ev.var)} {ev.valor:+.0%}"}[ev.tipo].replace(".", ",")
+     "exogena": (f"{dp.etiquetas.get(ev.var, ev.var)} {ev.valor:+.0f} {'°C' if ev.var == 'temperatura' else 'mm'}"
+                 if ev.var in ("temperatura", "lluvia") else f"{dp.etiquetas.get(ev.var, ev.var)} {ev.valor:+.0%}")}[ev.tipo].replace(".", ",")
     for ev in esc.eventos)
 st.markdown(f"### Resultado · {descripcion}")
 info_esc = [f"Del {f_ini:%d/%m/%Y} al {f_fin:%d/%m/%Y}", S.todos_entidad(dp) if len(afectadas) > 1 else afectadas[0],
@@ -371,7 +393,20 @@ if vista_pag == "Demanda":
     E.grafico(fig, key="fig_esc_dem")
     kp.mostrar()
     ev_precio = [ev for ev in esc.eventos if ev.tipo == "precio"]
-    otros_modelo = [ev for ev in esc.eventos if ev.tipo in ("promocion", "exogena")]
+    otros_modelo = [ev for ev in esc.eventos if ev.tipo == "promocion"
+                    or (ev.tipo == "exogena" and ev.var not in X.VARIABLES_CLIMA)]
+    ev_clima = [ev for ev in esc.eventos if ev.tipo == "exogena" and ev.var in X.VARIABLES_CLIMA]
+    if ev_clima and efecto_clima is not None:
+        partes = []
+        for ev in ev_clima:
+            f = efecto_clima[(efecto_clima["entidad"] == ent) & (efecto_clima["variable"] == ev.var)
+                             & efecto_clima["relevante"]]
+            unidad_c = "°C" if ev.var == "temperatura" else "mm de lluvia"
+            if len(f):
+                partes.append(f"{E.num(float(f['efecto_pct'].iloc[0]), 1)}% por cada {unidad_c}".replace("-", "−"))
+            else:
+                partes.append(f"sin efecto claro de {'la temperatura' if ev.var == 'temperatura' else 'la lluvia'}")
+        st.caption(f"Efecto del clima medido en el historial de {ent}: " + "; ".join(partes) + ".")
     if ev_precio and ev_precio[0].elasticidad is None and len(esc.eventos) == 1 and d0:
         el_modelo = ((d1 / d0) - 1) / ev_precio[0].valor
         st.caption(f"Efecto calculado por el modelo con lo que aprendió de tu historial: por cada 1% que sube el precio, "

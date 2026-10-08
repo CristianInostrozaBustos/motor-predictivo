@@ -27,6 +27,8 @@ import pandas as pd
 from .datos import FRECUENCIAS
 from .politica import Z_NIVEL, Decision, Parametros, decidir, politica_dinamica
 
+VARIABLES_CLIMA = ("temperatura", "lluvia")
+
 TIPOS = {
     "demanda": "Sube o baja la demanda",
     "retraso": "Retraso del proveedor",
@@ -62,9 +64,21 @@ class Escenario:
                 c.append(dict(var="precio", desde=self.desde, hasta=self.hasta, tipo="pct", valor=ev.valor))
             elif ev.tipo == "promocion":
                 c.append(dict(var="promocion", desde=self.desde, hasta=self.hasta, tipo="fijar", valor=1.0))
-            elif ev.tipo == "exogena" and ev.var:
+            elif ev.tipo == "exogena" and ev.var and ev.var not in VARIABLES_CLIMA:
                 c.append(dict(var=ev.var, desde=self.desde, hasta=self.hasta, tipo="pct", valor=ev.valor))
         return c
+
+    def factor_clima(self, efecto, entidad) -> float:
+        """Multiplicador de la demanda por los eventos de clima (°C o mm), con el efecto medido en el historial."""
+        f = 1.0
+        if efecto is None or not len(efecto):
+            return f
+        for ev in self.eventos:
+            if ev.tipo == "exogena" and ev.var in VARIABLES_CLIMA:
+                fila = efecto[(efecto["entidad"] == entidad) & (efecto["variable"] == ev.var) & efecto["relevante"]]
+                if len(fila):
+                    f *= max(0.0, 1 + float(fila["efecto_pct"].iloc[0]) / 100 * ev.valor)
+        return f
 
     def shock_demanda(self) -> float:
         k = sum(ev.valor for ev in self.eventos if ev.tipo == "demanda")
