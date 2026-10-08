@@ -292,6 +292,11 @@ descripcion = " + ".join(
                  if ev.var in ("temperatura", "lluvia") else f"{dp.etiquetas.get(ev.var, ev.var)} {ev.valor:+.0%}")}[ev.tipo].replace(".", ",")
     for ev in esc.eventos)
 st.markdown(f"### Resultado · {descripcion}")
+st.session_state["_reporte_escenario"] = dict(
+    clave=S.clave_dataset(dp), descripcion=descripcion, desde=f_ini, hasta=f_fin, con_inventario=hay_inv,
+    filas=[dict(entidad=str(e), **{k: comps[e].resumen.get(k, 0.0) for k in
+                                   ("demanda_base_evento", "demanda_esc_evento", "perdida_extra_sin", "perdida_extra_aj")})
+           for e in afectadas])
 info_esc = [f"Del {f_ini:%d/%m/%Y} al {f_fin:%d/%m/%Y}", S.todos_entidad(dp) if len(afectadas) > 1 else afectadas[0],
             f"análisis sobre {H_an} {u_pl}", f"nivel de servicio {nivel}"]
 
@@ -589,16 +594,15 @@ if vista_pag == "Impacto en dinero" and S.precio(ent):
             centro = (f"<span style='font-size:11px;color:#6b7280'>{m.replace('Con el evento, ', 'Con evento, ')}</span>"
                       f"<br><b>{E.clp_corto(float(d.loc[m, 'ingresos']))}</b>"
                       f"<br><span style='font-size:11px;color:#6b7280'>{E.num(float(d.loc[m, 'unidades']))} unidades</span>")
-            fig_t.add_trace(go.Pie(labels=[n for n, _, _ in partes_t], values=vals, hole=0.66, sort=False,
+            fig_t.add_trace(go.Pie(labels=[n for n, _, _ in partes_t], values=vals, hole=0.74, sort=False,
                                    marker=dict(colors=[c_ for _, _, c_ in partes_t], line=dict(color="white", width=2)),
                                    text=[E.pct(v / tot * 100, 1) if 0.005 <= v / tot < 0.995 else "" for v in vals],
                                    textinfo="text", textposition="outside",
-                                   title=dict(text=centro, position="middle center", font=dict(size=15)),
+                                   title=dict(text=centro, position="middle center", font=dict(size=13)),
                                    hovertemplate="%{label}<br>%{customdata}<extra></extra>",
                                    customdata=[E.clp(v) for v in vals], showlegend=i == 0, name=m),
                             1, i + 1)
-        fig_t.update_layout(title="Ingresos y ventas perdidas", height=330, margin=dict(t=60, b=10, l=10, r=10),
-                            legend=dict(orientation="h", y=-0.04, x=0))
+        fig_t.update_layout(title="Ingresos y ventas perdidas", height=260, margin=dict(b=10, l=10, r=10))
         E.grafico(fig_t, key="fig_esc_dinero")
         kp.mostrar()
         st.caption(f"Sobre los {H_an} {u_pl} analizados, con el último precio"

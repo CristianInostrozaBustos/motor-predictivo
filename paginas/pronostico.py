@@ -46,6 +46,32 @@ obj = dp.etiquetas["objetivo"]
 nom_col = S.mayus(S.nombre_entidad(dp))
 met = res.metricas_entidad.set_index("entidad")
 
+
+def chip_reporte(fila_r):
+    """Reporte PDF con lo pronosticado: gráficos, tablas y párrafos explicativos."""
+    import reporte as RP
+    ss = st.session_state
+    esc = ss.get("_reporte_escenario")
+    disponibles = [x for x in RP.SECCIONES
+                   if (x != "Ingresos proyectados" or S.hay_precios())
+                   and (x != "Último escenario" or (esc and esc.get("clave") == S.clave_dataset(dp)))]
+    nuevas = [x for x in disponibles if x not in ss.get("_rep_disponibles", [])]
+    ss["rep_secciones"] = [x for x in ss.get("rep_secciones", []) if x in disponibles] + nuevas
+    ss["_rep_disponibles"] = disponibles
+    with S.chip(fila_r, "Reporte PDF", "reporte"):
+        st.caption("Elige qué incluir.")
+        sel = [x for x in S.puntos_multi(disponibles, "rep_secciones", "rep") if x in disponibles]
+        firma = (S.clave_dataset(dp), H, tuple(sel), repr(esc.get("descripcion")) if esc else "")
+        listo = ss.get("_rep_pdf") and ss["_rep_pdf"][0] == firma
+        if not listo and st.button("Preparar reporte", type="primary", disabled=not sel, key="rep_preparar"):
+            with st.spinner("Armando el reporte..."):
+                ss["_rep_pdf"] = (firma, RP.construir_pdf(RP.reunir(sel)))
+            listo = True
+        if listo:
+            nombre = str(ss.get("nombre_dataset", "pronostico")).rsplit(".", 1)[0]
+            st.download_button("Descargar PDF", ss["_rep_pdf"][1], file_name=f"reporte_{nombre}.pdf",
+                               mime="application/pdf", type="primary", icon=":material/download:", key="rep_descargar")
+
 if vista == "Prueba con datos pasados":
     con_bt = [e for e in entidades if e in res.backtest]
     prueba = S.selector_entidad(con_bt, dp, key="bt", fila=FILA.get("fila"))
@@ -260,7 +286,9 @@ todo = todo[["entidad", "fecha", "P50", "P10", "P90"]].rename(columns={
 todo[["Pronóstico", "Escenario bajo (P10)", "Escenario alto (P90)"]] = todo[
     ["Pronóstico", "Escenario bajo (P10)", "Escenario alto (P90)"]].round(1)
 todo["Fecha"] = todo["Fecha"].dt.date
-with st.container(horizontal=True, horizontal_alignment="right"):
+zona_descarga = st.container(horizontal=True, horizontal_alignment="right", vertical_alignment="center")
+with zona_descarga:
+    chip_reporte(zona_descarga)
     st.download_button("Descargar pronóstico (Excel)", E.excel_bytes({"Pronóstico": todo}),
                        file_name="pronostico.xlsx", icon=":material/download:", type="tertiary",
                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
