@@ -335,6 +335,12 @@ section[data-testid="stSidebar"] [data-testid="stVerticalBlock"] { gap: 0.35rem;
     box-shadow: 0 4px 14px rgba(229,72,77,0.30); }
 [class*="st-key-btn_siguiente"] button:hover { background: #d03b3b !important; border-color: #d03b3b !important; }
 [class*="st-key-btn_siguiente"] button p { color: #ffffff !important; font-weight: 650; font-size: .88rem; }
+.st-key-btn_simulado button:disabled { background: #e9f6ee !important; border: 1px solid #b9e2c6 !important;
+    border-radius: 999px; opacity: 1 !important; cursor: default; }
+.st-key-btn_simulado button:disabled p, .st-key-btn_simulado button:disabled span { color: #1a7f37 !important;
+    font-weight: 650; }
+body:has(.st-key-esc_desactualizado) :is([class*="st-key-tarjeta_"], .kpis, .nota, [data-testid="stDataFrame"]) {
+    opacity: .4; transition: opacity .2s; }
 [class*="st-key-tarjeta_generar"] { background: #ffffff; border: 1px solid rgba(11,11,11,0.07); border-radius: 16px;
     padding: 30px 36px; max-width: 820px; box-shadow: 0 1px 3px rgba(11,11,11,0.05), 0 8px 24px rgba(11,11,11,0.05); }
 .gen-num { font-size: 4rem; font-weight: 800; color: #1c5cab; letter-spacing: -0.03em; line-height: 1; }

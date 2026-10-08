@@ -71,23 +71,21 @@ def buscar_lugar(nombre):
 
 
 def preparar_dataset(df, roles, exogenas, frecuencia, relleno, negativos, suavizar=SUAVIZAR_PICOS_DEFECTO, lugar=None):
-    """Prepara los datos y, si se eligió un lugar, agrega el clima como variable externa."""
-    from motor import clima as C
+    """Prepara los datos y, si se eligió un lugar, adjunta su clima diario (capa de corto plazo, no entra al modelo)."""
     from motor import servicio as Sv
-    roles, exogenas, diaria = dict(roles), list(exogenas), None
     st.session_state.pop("_clima_error", None)
+    dp = preparar_cacheado(df, tuple(sorted(dict(roles).items())), tuple(exogenas), frecuencia, relleno, negativos,
+                           suavizar)
     if lugar:
         try:
             hoy = str(pd.Timestamp.today().date())
-            df, diaria = Sv.clima_para(df, roles, lugar, frecuencia,
-                                       obtener=lambda la, lo, d, h: _clima_diario(la, lo, str(d.date()), str(h.date()), hoy))
-            exogenas += [v for v in C.VARIABLES if v not in exogenas]
+            diaria = Sv.clima_para(df, dict(roles), lugar,
+                                   obtener=lambda la, lo, d, h: _clima_diario(la, lo, str(d.date()), str(h.date()), hoy))
         except Exception as e:  # noqa: BLE001
+            diaria = None
             st.session_state["_clima_error"] = f"No se pudo traer el clima ({type(e).__name__}); se sigue sin él."
-    dp = preparar_cacheado(df, tuple(sorted(roles.items())), tuple(exogenas), frecuencia, relleno, negativos, suavizar)
-    if diaria is not None:
-        dp.clima_diaria, dp.clima_lugar = diaria, lugar.get("nombre", "")
-        C.usar_solo_si_influye(dp, frecuencia)
+        if diaria is not None:
+            dp.clima_diaria, dp.clima_lugar = diaria, lugar.get("nombre", "")
     return dp
 
 
@@ -216,13 +214,44 @@ def resultado():
     r = st.session_state.get("resultado")
     if dp is None or r is None or r["clave"] != clave_dataset(dp):
         return dp, None
-    if getattr(dp, "clima_diaria", None) is not None:      # el clima más reciente para pronosticar
-        r["res"].clima_diaria, r["res"].clima_freq = dp.clima_diaria, dp.config.frecuencia
     return dp, r["res"]
 
 
 def horizonte():
     return st.session_state.get("horizonte")
+
+
+@st.cache_data(show_spinner="Midiendo el efecto del clima...", max_entries=10)
+def _clima_validado(clave, lugar, dia):
+    from motor import clima as C
+    dp, res = st.session_state["dp"], st.session_state["resultado"]["res"]
+    return C.validar(dp.df, dp.clima_diaria, dp.config.frecuencia, res.backtest)
+
+
+def clima_efecto():
+    """Efecto del clima por producto, con la columna usa (la capa mejora el error en la prueba con datos pasados).
+    None si no hay clima elegido o no hay modelo."""
+    dp, res = resultado()
+    if res is None or getattr(dp, "clima_diaria", None) is None:
+        return None
+    try:
+        return _clima_validado(st.session_state["resultado"]["clave"], dp.clima_lugar,
+                               str(pd.Timestamp.today().date()))
+    except Exception as e:  # noqa: BLE001
+        st.session_state["_clima_error"] = f"No se pudo medir el efecto del clima ({type(e).__name__})."
+        return None
+
+
+def _con_clima(pron):
+    """Ajusta los próximos días según el pronóstico del tiempo (solo productos donde el clima mejora el error)."""
+    ef = clima_efecto()
+    if ef is None or not ef["usa"].any() or not pron:
+        return pron
+    from motor import clima as C
+    dp = st.session_state["dp"]
+    fut = next(iter(pron.values()))["fecha"]
+    fac = C.factores(ef, dp.clima_diaria, dp.df["fecha"].unique(), fut, dp.config.frecuencia)
+    return C.ajustar(pron, fac)
 
 
 @st.cache_data(show_spinner="Calculando el pronóstico...", max_entries=20)
@@ -232,12 +261,18 @@ def _pronostico_cacheado(clave, h, freq, dia=None):
     return M.pronosticar(res, h, freq)
 
 
-def pronostico(h=None):
+def pronostico_normal(h=None):
+    """Pronóstico de los motores, sin la capa de clima."""
     dp, res = resultado()
     if res is None:
         return None
     return _pronostico_cacheado(st.session_state["resultado"]["clave"], h or horizonte(), dp.config.frecuencia,
                                 str(pd.Timestamp.today().date()))
+
+
+def pronostico(h=None):
+    base = pronostico_normal(h)
+    return _con_clima(base) if base is not None else None
 
 
 @st.cache_data(show_spinner="Simulando el escenario...", max_entries=20)
@@ -254,8 +289,8 @@ def pronostico_escenario(h, cambios, entidades):
         base = pronostico(h)
         return {e: base[e] for e in entidades}
     cambios_t = tuple(tuple(sorted(c.items())) for c in cambios)
-    return _pronostico_escenario_cacheado(st.session_state["resultado"]["clave"], h, dp.config.frecuencia,
-                                          cambios_t, tuple(entidades))
+    return _con_clima(_pronostico_escenario_cacheado(st.session_state["resultado"]["clave"], h, dp.config.frecuencia,
+                                                     cambios_t, tuple(entidades)))
 
 
 # ---------------------------------------------------------------- vistas por página (menú lateral)

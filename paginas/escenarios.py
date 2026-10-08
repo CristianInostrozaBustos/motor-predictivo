@@ -64,7 +64,11 @@ if "precio" in res.exog_nombres:
     disponibles.append("precio")
 if "promocion" in res.exog_nombres:
     disponibles.append("promocion")
+efecto_clima = S.clima_efecto()
 otras = [v for v in res.exog_nombres if v not in ("precio", "promocion")]
+if efecto_clima is not None and len(efecto_clima):
+    otras += [v for v in X.VARIABLES_CLIMA
+              if v not in otras and efecto_clima.loc[efecto_clima["variable"] == v, "relevante"].any()]
 if otras:
     disponibles.append("exogena")
 
@@ -206,8 +210,16 @@ with S.chip(fila, f"Empieza: {ss.get('esc_ini', inicio_def):%d/%m/%Y}", "esc_ini
 dur_txt = ss.get("esc_dur", min(dur_def, dur_max))
 with S.chip(fila, f"Dura: {dur_txt} {u_pl if dur_txt != 1 else u}", "esc_dur"):
     duracion = st.slider(f"Dura ({u_pl})", 1, dur_max, min(dur_def, dur_max), key="esc_dur")
+offset = pd.tseries.frequencies.to_offset(FRECUENCIAS[freq]["pandas"])
+desde = len(pd.date_range(primera_fecha, pd.Timestamp(fecha_ini), freq=offset)) - 1
+actual = dict(clave=S.clave_dataset(dp), eventos=eventos, desde=max(0, desde), duracion=duracion, alcance=alcance)
+ya_simulado = bool(eventos) and repr(st.session_state.get("escenario")) == repr(actual)
 with fila.container(width="content"):
-    simular = st.button("Simular", type="primary", icon=":material/play_arrow:", disabled=not eventos)
+    if ya_simulado:
+        simular = st.button("Simulado", icon=":material/check:", disabled=True, key="btn_simulado")
+    else:
+        simular = st.button("Simular", type="primary", icon=":material/play_arrow:", disabled=not eventos,
+                            key="btn_simular")
 if guardados:
     with S.chip(fila, "Guardados", "esc_guardados", icono=":material/bookmark:"):
         nombres = [g["nombre"] for g in guardados]
@@ -220,21 +232,20 @@ if guardados:
                                                  eventos=[X.Evento(**ev) for ev in g["eventos"]])
             st.session_state["_esc_cargado"] = elegido
 
-offset = pd.tseries.frequencies.to_offset(FRECUENCIAS[freq]["pandas"])
-desde = len(pd.date_range(primera_fecha, pd.Timestamp(fecha_ini), freq=offset)) - 1
-actual = dict(clave=S.clave_dataset(dp), eventos=eventos, desde=max(0, desde), duracion=duracion, alcance=alcance)
 if simular:
     st.session_state.pop("_esc_cargado", None)
     st.session_state["escenario"] = actual
+    st.rerun()
 
 guardado = st.session_state.get("escenario")
 if not guardado or guardado["clave"] != S.clave_dataset(dp):
     st.caption(":material/info: Elige uno o más eventos y presiona **Simular**.")
     st.stop()
 if repr(guardado) != repr(actual):
-    st.caption(":material/refresh: " + ("Cambiaste el escenario: presiona **Simular** para actualizarlo"
-                                        if eventos else "Elige al menos un evento para simular")
-               + "; mientras tanto ves el último que simulaste.")
+    with st.container(key="esc_desactualizado"):
+        st.caption(":material/refresh: " + ("Cambiaste el escenario: presiona **Simular** para actualizarlo"
+                                            if eventos else "Elige al menos un evento para simular")
+                   + "; mientras tanto ves el último que simulaste.")
 
 esc = X.Escenario(guardado["eventos"], guardado["desde"], guardado["duracion"])
 afectadas = entidades if guardado["alcance"] == "Todas" else [guardado["alcance"]]
@@ -253,7 +264,6 @@ if esc.desde >= H_an:
 base = S.pronostico(H_an)
 con_evento = S.pronostico_escenario(H_an, esc.cambios_modelo(), afectadas)
 # el clima mueve la demanda según el efecto medido en el historial de cada producto
-efecto_clima = getattr(dp, "clima_efecto", None)
 if any(ev.tipo == "exogena" and ev.var in X.VARIABLES_CLIMA for ev in esc.eventos):
     con_evento = dict(con_evento)
     for e in afectadas:
@@ -565,10 +575,31 @@ if vista_pag == "Impacto en dinero" and S.precio(ent):
             vista["Costo"] = d["costo"].to_numpy()
             vista["Margen"] = d["margen"].to_numpy()
             vista["Margen vs. sin evento"] = (d["margen"] - b["margen"]).to_numpy()
-        legible = vista.copy()
-        for k in legible.columns[1:]:
-            legible[k] = legible[k].map(E.num if k == "Unidades vendidas" else E.clp)
-        st.dataframe(legible, hide_index=True, width="stretch")
+
+        from plotly.subplots import make_subplots
+        mundos = list(d.index)
+        fig_t = make_subplots(rows=1, cols=len(mundos), specs=[[{"type": "domain"}] * len(mundos)],
+                              horizontal_spacing=0.04)
+        partes_t = [("Vendido", "ingresos", E.AZUL), ("Perdido por quiebres", "ventas_perdidas", E.ROJO)]
+        if alt is not None:
+            partes_t.append(("Sobrecosto proveedor", "sobrecosto", "#9aa4b2"))
+        for i, m in enumerate(mundos):
+            vals = [max(0.0, float(d.loc[m, col])) if col in d.columns else 0.0 for _, col, _ in partes_t]
+            tot = sum(vals) or 1.0
+            centro = (f"<span style='font-size:11px;color:#6b7280'>{m.replace('Con el evento, ', 'Con evento, ')}</span>"
+                      f"<br><b>{E.clp_corto(float(d.loc[m, 'ingresos']))}</b>"
+                      f"<br><span style='font-size:11px;color:#6b7280'>{E.num(float(d.loc[m, 'unidades']))} unidades</span>")
+            fig_t.add_trace(go.Pie(labels=[n for n, _, _ in partes_t], values=vals, hole=0.66, sort=False,
+                                   marker=dict(colors=[c_ for _, _, c_ in partes_t], line=dict(color="white", width=2)),
+                                   text=[E.pct(v / tot * 100, 1) if 0.005 <= v / tot < 0.995 else "" for v in vals],
+                                   textinfo="text", textposition="outside",
+                                   title=dict(text=centro, position="middle center", font=dict(size=15)),
+                                   hovertemplate="%{label}<br>%{customdata}<extra></extra>",
+                                   customdata=[E.clp(v) for v in vals], showlegend=i == 0, name=m),
+                            1, i + 1)
+        fig_t.update_layout(title="Ingresos y ventas perdidas", height=330, margin=dict(t=60, b=10, l=10, r=10),
+                            legend=dict(orientation="h", y=-0.04, x=0))
+        E.grafico(fig_t, key="fig_esc_dinero")
         kp.mostrar()
         st.caption(f"Sobre los {H_an} {u_pl} analizados, con el último precio"
                    + (" y costo" if hay_costo else "") + f" de tu archivo para {ent}. "

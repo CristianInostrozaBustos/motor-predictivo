@@ -16,12 +16,8 @@ SUAVIZAR_PICOS_DEFECTO = True
 
 
 def clave_dataset(dp) -> str:
-    """Huella de los datos preparados: identifica el modelo guardado. Los valores de clima se excluyen (el último
-    tramo cambia de pronóstico a observado de un día a otro); cuenta solo que el clima se usa y de dónde."""
-    from . import clima as C
-    df = dp.df.drop(columns=[c for c in C.VARIABLES if c in dp.df.columns])
-    h = hashlib.sha256(pd.util.hash_pandas_object(df, index=False).values.tobytes())
-    h.update(str(getattr(dp, "clima_lugar", "")).encode())
+    """Huella de los datos preparados: identifica el modelo guardado. El clima no entra (es una capa aparte)."""
+    h = hashlib.sha256(pd.util.hash_pandas_object(dp.df, index=False).values.tobytes())
     h.update(str(dp.variables_modelo).encode())
     h.update(dp.config.frecuencia.encode())
     if dp.config.suavizar_picos and len(dp.picos):     # solo cambia el modelo si hay picos que suavizar
@@ -29,42 +25,36 @@ def clave_dataset(dp) -> str:
     return h.hexdigest()[:16]
 
 
-def clima_para(df, roles: dict, lugar: dict, frecuencia: str, obtener=None):
-    """(df con columnas de clima, clima diario hasta ~1 año después del historial) o (df, None) si no hay lugar.
+def clima_para(df, roles: dict, lugar: dict, obtener=None):
+    """Clima diario del lugar, desde antes del historial hasta ~1 año después, o None si no hay lugar.
     obtener(lat, lon, desde, hasta) permite usar una versión con caché."""
     from . import clima as C
     if not lugar or not roles.get("fecha"):
-        return df, None
+        return None
     fechas, _ = D.parsear_fechas(df[roles["fecha"]])
     if fechas.notna().sum() == 0:
-        return df, None
+        return None
     desde = fechas.min() - pd.Timedelta(days=100)
-    hasta = fechas.max() + pd.Timedelta(days=400)
-    diaria = (obtener or C.serie_diaria)(lugar["lat"], lugar["lon"], desde, hasta)
-    return C.agregar(df, fechas, diaria, frecuencia), diaria
+    hasta = max(fechas.max(), pd.Timestamp.today()) + pd.Timedelta(days=400)
+    return (obtener or C.serie_diaria)(lugar["lat"], lugar["lon"], desde, hasta)
 
 
 def preparar_con_config(df, cfg: dict):
     """Prepara los datos con la configuración guardada de un análisis (la misma que usa la página Datos)."""
-    from . import clima as C
     roles = cfg.get("roles", {})
-    exogenas = list(cfg.get("exogenas", []))
-    lugar = cfg.get("clima")
-    diaria = None
-    if lugar:
-        try:
-            df, diaria = clima_para(df, roles, lugar, cfg.get("frecuencia", "D"))
-            exogenas += [v for v in C.VARIABLES if v not in exogenas]
-        except Exception:  # noqa: BLE001  (sin conexión al servicio de clima se sigue sin clima)
-            diaria = None
-    c = D.Configuracion(roles=dict(sorted(roles.items())), exogenas=exogenas,
+    c = D.Configuracion(roles=dict(sorted(roles.items())), exogenas=list(cfg.get("exogenas", [])),
                         frecuencia=cfg.get("frecuencia", "D"), relleno_objetivo=cfg.get("relleno", "interpolar"),
                         negativos_a_cero=cfg.get("negativos", True),
                         suavizar_picos=cfg.get("suavizar_picos", SUAVIZAR_PICOS_DEFECTO))
     dp = D.preparar(df, c)
-    if diaria is not None:
-        dp.clima_diaria, dp.clima_lugar = diaria, lugar.get("nombre", "")
-        C.usar_solo_si_influye(dp, c.frecuencia)
+    lugar = cfg.get("clima")
+    if lugar:
+        try:
+            diaria = clima_para(df, roles, lugar)
+        except Exception:  # noqa: BLE001  (sin conexión al servicio de clima se sigue sin clima)
+            diaria = None
+        if diaria is not None:
+            dp.clima_diaria, dp.clima_lugar = diaria, lugar.get("nombre", "")
     return dp
 
 

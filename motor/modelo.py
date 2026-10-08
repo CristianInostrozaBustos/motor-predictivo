@@ -417,7 +417,6 @@ def entrenar_motor(dp: DatasetPreparado, plan: PlanEntrenamiento, al_avance=None
                           metricas_entidad=metricas, backtest=backtest, historial_perdida=hist,
                           epocas=len(hist["loss"]), segundos=0.0)
     res.picos = {e: len(v) for e, v in picos.items()}
-    res.clima_diaria, res.clima_freq = getattr(dp, "clima_diaria", None), dp.config.frecuencia
     avisar(0.8, "Comparando con otros modelos de pronóstico")
     _torneo(res, ini_sel, ini_prueba, seleccion_lstm[ventana], avisar,
             lambda: _suavizar(series, picos, lambda e, i: i >= ini_prueba[e]))
@@ -539,25 +538,14 @@ def _torneo(res: ResultadoModelo, ini_sel, ini_prueba, seleccion_lstm, avisar, a
 
 # ---------------------------------------------------------------- pronóstico futuro
 
-def _freq_de(fechas) -> str:
-    paso = (fechas[1] - fechas[0]).days if len(fechas) > 1 else 1
-    return "D" if paso <= 1 else "W" if paso <= 7 else "M" if paso <= 31 else "Q"
-
-
 def _exogenas_futuras(res: ResultadoModelo, e, fechas_fut):
-    """Supuestos hacia el futuro: precio = último valor, promoción = 0, clima = pronóstico y luego clima típico,
-    otras variables = valor de hace un año (o el último si no hay)."""
+    """Supuestos hacia el futuro: precio = último valor, promoción = 0, otras variables = valor de hace un año
+    (o el último si no hay)."""
     s = res.series[e]
     serie_hist = pd.DataFrame(s.crudo[:, 1:], index=s.fechas, columns=res.exog_nombres)
-    clima_fut = None
-    if getattr(res, "clima_diaria", None) is not None:
-        from . import clima as C
-        clima_fut = C.por_periodo(res.clima_diaria, fechas_fut, getattr(res, "clima_freq", None) or _freq_de(fechas_fut))
     cols = []
     for v in res.exog_nombres:
-        if clima_fut is not None and v in clima_fut.columns:
-            cols.append(clima_fut[v].to_numpy(dtype=float))
-        elif v == "precio":
+        if v == "precio":
             cols.append(np.full(len(fechas_fut), res.exog_ultimo[e][v]))
         elif v == "promocion":
             cols.append(np.zeros(len(fechas_fut)))

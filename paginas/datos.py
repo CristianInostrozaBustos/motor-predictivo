@@ -124,7 +124,7 @@ _planes_previos = (st.session_state.get("config_actual") or {}).get("planes") or
 st.session_state["config_actual"] = dict(roles=roles, exogenas=list(exogenas), frecuencia=frecuencia, relleno=relleno,
                                          negativos=bool(negativos), nombre_serie=nombre_serie.strip(),
                                          suavizar_picos=bool(suavizar), inflacion=S.config_inflacion(),
-                                         clima=lugar_clima if getattr(dp, "clima_diaria", None) is not None else None)
+                                         clima=lugar_clima)
 if _planes_previos:
     st.session_state["config_actual"]["planes"] = _planes_previos
 _lo = st.session_state.get("link_origen")
@@ -145,12 +145,12 @@ fila = S.fila_chips("datos")
 
 
 def chip_clima():
-    """Lugar cuyo clima (temperatura y lluvia) entra al modelo como variable externa."""
+    """Lugar cuyo clima ajusta los próximos 16 días del pronóstico (capa de corto plazo)."""
     ss = st.session_state
     lugar = ss.get(f"clima_{k}")
     with S.chip(fila, "Clima: " + (lugar["nombre"].split(",")[0] if lugar else "sin usar"), "clima"):
-        st.caption("La temperatura y la lluvia del lugar entran al modelo; el pronóstico usa el pronóstico del tiempo "
-                   "de los próximos 16 días y, más allá, el clima típico de esa fecha.")
+        st.caption("Si el pronóstico del tiempo de los próximos 16 días se aleja de lo normal, el pronóstico se ajusta "
+                   "según cómo reaccionó cada producto en tu historial. Solo en productos donde baja el error.")
         texto = st.text_input("Ciudad o comuna", key=f"clima_txt_{k}", placeholder="Ej.: Santiago")
         if texto.strip():
             try:
@@ -166,18 +166,21 @@ def chip_clima():
                     st.rerun()
             elif lugares is not None:
                 st.caption("Sin resultados.")
-        ef = getattr(dp, "clima_efecto", None)
-        if lugar and ef is not None:
+        ef = S.clima_efecto() if lugar else None
+        if lugar and ef is None and S.resultado()[1] is None:
+            st.caption("El efecto se mide al generar el pronóstico.")
+        elif ef is not None:
             rel = ef[ef["relevante"]]
             if len(rel):
                 textos = []
                 for ent_c, g in rel.groupby("entidad"):
-                    partes = [("más" if r > 0 else "menos") + (" con calor" if v == "temperatura" else " con lluvia")
-                              for v, r in zip(g["variable"], g["r"])]
-                    textos.append(f"**{ent_c}**: vende {' y '.join(partes)}")
+                    partes = [f"{'+' if p_ > 0 else '−'}{E.num(abs(p_), 1)}% por " + ("°C" if v == "temperatura" else "mm")
+                              for v, p_ in zip(g["variable"], g["efecto_pct"])]
+                    usa = bool(g["usa"].any())
+                    textos.append(f"**{ent_c}**: {', '.join(partes)}" + ("" if usa else " · no mejora el error, no se usa"))
                 st.markdown("Efecto medido en tu historial:  \n" + "  \n".join(textos[:12]))
             else:
-                st.caption("El clima no muestra un efecto claro en tus ventas, así que el modelo no lo usa.")
+                st.caption("El clima no muestra un efecto claro en tus ventas, así que no se usa.")
         if lugar and st.button("Quitar el clima", key=f"clima_quitar_{k}"):
             ss[f"clima_{k}"] = None
             st.rerun()
